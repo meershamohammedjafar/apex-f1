@@ -1,0 +1,39 @@
+{
+  "name": "apex-f1",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "APEX \u2014 a first-person Formula 1 racing simulator built on Three.js",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 5173",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 4173",
+    "shoot": "node tools/screenshot.mjs",
+    "app": "vite build && electron desktop/main.cjs",
+    "dist:win": "vite build && electron-builder --win portable"
+  },
+  "dependencies": {
+    "three": "0.185.1"
+  },
+  "devDependencies": {
+    "vite": "^7.1.0",
+    "playwright": "^1.56.0",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "main": "desktop/main.cjs",
+  "build": {
+    "appId": "com.apex.formulaone",
+    "productName": "APEX Formula One",
+    "files": [
+      "dist/**",
+      "desktop/**"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": "portable"
+    }
+  }
+}

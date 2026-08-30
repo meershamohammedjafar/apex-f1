@@ -1,0 +1,8 @@
+*.log
+.vite/
+dist/
+node_modules/
+shots/
+shots-oracle/
+tools/.diag*/
+release/

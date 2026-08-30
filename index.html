@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>APEX — Formula 1</title>
+    <!-- Fonts are resolved from the system stack: the build must run offline
+         (headless capture harness, CI) with no external requests. -->
+    <style>
+      :root {
+        color-scheme: dark;
+        --f1-red: #e10600;
+        --f1-ink: #0a0a0c;
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        width: 100%; height: 100%; overflow: hidden;
+        background: var(--f1-ink);
+        font-family: 'Barlow', system-ui, -apple-system, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      #app { position: fixed; inset: 0; }
+      #viewport { display: block; width: 100%; height: 100%; touch-action: none; }
+      #ui-root { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="viewport"></canvas>
+      <div id="ui-root"></div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

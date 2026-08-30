@@ -1,0 +1,1542 @@
+/*
+ * APEX interface skin.
+ *
+ * Sizing is expressed in viewport units wrapped in clamp() so one rule set reads
+ * correctly from a 1280x720 laptop to a 4K television without a JS layout pass.
+ * The vertical rhythm keys off vh because the tower is height-bound; horizontal
+ * chrome keys off vw.
+ */
+
+:root {
+  --apex-red: #e10600;
+  --apex-stroke: rgba(255, 255, 255, 0.14);
+  --apex-stroke-hi: rgba(255, 255, 255, 0.26);
+  --apex-text: #f3f5f8;
+  --apex-text-dim: rgba(243, 245, 248, 0.62);
+  --apex-text-mute: rgba(243, 245, 248, 0.42);
+  --apex-good: #21d16b;
+  --apex-warn: #ffb020;
+  --apex-bad: #ff3b30;
+  --apex-purple: #bf3df2;
+  --apex-cyan: #43d9ff;
+
+  /*
+   * Plate opacity is the single most load-bearing number in this stylesheet. The HUD is
+   * composited over whatever the camera is pointing at, and that is as often a blown-out
+   * sky or a white grandstand roof as it is asphalt. At 0.94/0.975 the brightest possible
+   * backdrop bleeds through at ~15/255, so white text keeps better than 15:1 against every
+   * frame in the game rather than only against the dark ones.
+   */
+  --apex-plate-top: rgba(13, 16, 21, 0.94);
+  --apex-plate-bot: rgba(5, 6, 9, 0.975);
+
+  --apex-pad: clamp(10px, 1.5vh, 30px);
+  /*
+   * Broadcast graphics are read at a glance from across a room, and the package was
+   * being set at half the cap height that needs. The label face carries LAST, BEST,
+   * FASTEST, DELTA, STORE, WEAR, BIAS FRONT and every unit in the HUD, so it is the one
+   * number that moves all of them: 0.86vw renders 16.5 px, a measured 12 px cap at
+   * 1920x1080, and tracks the viewport either side of it. No webfont ships with the
+   * game, so 'Barlow Condensed' resolves to the same upright sans as 'Barlow' and the
+   * label face is no narrower than the display face — the widths below assume that.
+   */
+  --apex-label: clamp(11px, 0.86vw, 23px);
+  --apex-value: clamp(14px, 1.04vw, 28px);
+  --apex-panel-radius: 2px;
+  --apex-blur: blur(14px) saturate(1.08);
+}
+
+.apex-root {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  color: var(--apex-text);
+  font-family: 'Barlow', system-ui, sans-serif;
+  font-feature-settings: 'tnum' 1;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+.apex-hud {
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+
+.apex-hud.is-hidden {
+  opacity: 0;
+  transform: scale(1.012);
+}
+
+/* Every panel shares one recipe so the HUD reads as a single graphics package. */
+.apex-panel {
+  background: linear-gradient(180deg, var(--apex-plate-top) 0%, var(--apex-plate-bot) 100%);
+  border: 1px solid var(--apex-stroke);
+  border-radius: var(--apex-panel-radius);
+  backdrop-filter: var(--apex-blur);
+  -webkit-backdrop-filter: var(--apex-blur);
+  /* The drop shadow is what separates the plate edge from a bright backdrop; the inset
+     top highlight keeps the plate from reading as a hole punched in the frame. */
+  box-shadow:
+    0 clamp(2px, 0.4vh, 8px) clamp(10px, 2vh, 34px) rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.apex-label {
+  font-family: 'Barlow Condensed', 'Barlow', sans-serif;
+  font-weight: 600;
+  font-size: var(--apex-label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--apex-text-dim);
+  line-height: 1;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.apex-value {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: var(--apex-value);
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
+
+/* Top-right stack: session state, lap times, circuit map. */
+
+.hud-corner-tr {
+  position: absolute;
+  top: var(--apex-pad);
+  right: var(--apex-pad);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: clamp(5px, 0.7vh, 12px);
+}
+
+.hud-session {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  overflow: hidden;
+}
+
+.hud-session .flagbar {
+  width: clamp(3px, 0.24vw, 7px);
+  background: var(--apex-good);
+  transition: background 0.2s ease;
+  box-shadow: 0 0 clamp(6px, 0.9vw, 18px) currentColor;
+}
+
+.hud-session.flag-yellow .flagbar { background: var(--apex-warn); }
+.hud-session.flag-red .flagbar { background: var(--apex-bad); }
+.hud-session.flag-chequered .flagbar {
+  background: repeating-linear-gradient(180deg, #fff 0 6px, #101014 6px 12px);
+}
+
+.hud-cell {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: clamp(3px, 0.45vh, 7px);
+  padding: clamp(6px, 0.9vh, 14px) clamp(9px, 0.72vw, 20px);
+  border-left: 1px solid var(--apex-stroke);
+}
+
+.hud-cell:first-of-type { border-left: 0; }
+
+.hud-cell.accent .apex-value { color: #fff; }
+
+.hud-cell .apex-value.big {
+  font-family: 'Barlow', sans-serif;
+  font-weight: 800;
+  font-size: clamp(17px, 1.32vw, 36px);
+  letter-spacing: -0.02em;
+}
+
+.hud-times {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: clamp(2px, 0.35vh, 6px) clamp(8px, 0.7vw, 18px);
+  padding: clamp(7px, 1vh, 15px) clamp(10px, 0.8vw, 22px);
+  align-items: center;
+}
+
+.hud-times .apex-value { text-align: right; }
+.hud-times .t-purple { color: var(--apex-purple); }
+.hud-times .t-green { color: var(--apex-good); }
+.hud-times .t-yellow { color: var(--apex-warn); }
+.hud-times .t-white { color: var(--apex-text); }
+
+/* Circuit map. */
+
+.hud-minimap {
+  position: relative;
+  padding: clamp(6px, 0.8vh, 14px);
+  width: clamp(148px, 13vw, 340px);
+}
+
+.hud-minimap canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.hud-minimap .mm-caption {
+  position: absolute;
+  left: clamp(8px, 0.9vh, 17px);
+  bottom: clamp(6px, 0.8vh, 14px);
+  display: flex;
+  align-items: baseline;
+  gap: 0.5em;
+}
+
+.hud-minimap .mm-caption .name {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 600;
+  font-size: var(--apex-label);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--apex-text-dim);
+}
+
+/* Broadcast timing tower. */
+
+.hud-tower {
+  position: absolute;
+  left: var(--apex-pad);
+  top: var(--apex-pad);
+  /*
+   * Wide enough that the driver code never loses a letter. The code column is what is
+   * left after the position block, the sector pips, the compound marker and the interval
+   * have taken their widths, and those are all struck off --tt-row: at the 22 px row this
+   * package now sets, a 214 px tower left the code 37 px and clipped the last letter of
+   * MAR and FER at 1280x720. 246 px leaves it 69 px there and ~104 px at 1080p.
+   */
+  width: clamp(246px, 17.2vw, 460px);
+  /*
+   * The row is the tower's type scale: the driver code, the interval, the position
+   * numeral and every pip are struck off it. At 2.06vh the code came out at an 8 px cap,
+   * which is a caption, not a broadcast tower.
+   *
+   * The window (TimingTower.js) put nine rows on screen where there were twenty, which
+   * buys back 270 px of frame; a third of that goes back into the type. 2.72vh renders a
+   * 29 px row at 1080p — a 23.5 px code and interval, a measured 17 px cap — and the
+   * nine rows plus the header finish 350 px down a 1080 frame instead of 589.
+   */
+  --tt-row: clamp(22px, 2.72vh, 44px);
+  --tt-gap: 1px;
+  /* Written by TimingTower.js from its own VIEW constant; the fallback matches it. */
+  --tt-rows: 9;
+}
+
+/*
+ * Title over strapline, not beside it. Set at the sizes above, "LIVE TIMING" and
+ * "RACE · LAP 12/44" together need more width than the tower has, and a flex row with
+ * nowhere to go wraps the title onto a second line mid-word. Stacking them is what a
+ * broadcast tower does anyway, and it cannot clip at any viewport.
+ */
+.hud-tower .tt-head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: clamp(3px, 0.45vh, 8px);
+  padding: clamp(6px, 0.82vh, 13px) clamp(8px, 0.65vw, 17px);
+  border-left: clamp(3px, 0.24vw, 6px) solid var(--apex-red);
+  margin-bottom: clamp(3px, 0.4vh, 7px);
+}
+
+.hud-tower .tt-head .title {
+  font-family: 'Barlow', sans-serif;
+  font-weight: 800;
+  font-size: clamp(15px, 1.18vw, 32px);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #fff;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.hud-tower .tt-head .sub {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 600;
+  font-size: var(--apex-label);
+  letter-spacing: 0.14em;
+  color: var(--apex-text-dim);
+  text-transform: uppercase;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/*
+ * The plate lives on the body, not on the rows.
+ *
+ * Rows are absolutely positioned and slide against each other, so painting each one with
+ * its own translucent fill left the 1px seams — and, when a row was mid-slide, whole
+ * bands — showing raw sky. One opaque plate underneath means the tower's contrast is a
+ * property of the panel rather than of whatever the rows happen to be doing this frame,
+ * and the rows above it only have to carry a tint.
+ */
+.hud-tower .tt-body {
+  position: relative;
+  height: calc((var(--tt-row) + var(--tt-gap)) * var(--tt-rows));
+  padding: 0;
+  background: linear-gradient(180deg, var(--apex-plate-top) 0%, var(--apex-plate-bot) 100%);
+  border: 1px solid var(--apex-stroke);
+  border-radius: var(--apex-panel-radius);
+  backdrop-filter: var(--apex-blur);
+  -webkit-backdrop-filter: var(--apex-blur);
+  box-shadow:
+    0 clamp(2px, 0.4vh, 8px) clamp(10px, 2vh, 34px) rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+}
+
+.tt-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: var(--tt-row);
+  display: grid;
+  /*
+   * The interval track is a fixed width, not `auto`.
+   *
+   * Every row is its own grid, so an `auto` interval column is sized by that row's own
+   * string: "+0.667" and "LEADER" happen to resolve to the same width, but "+1 LAP" and
+   * "+2 LAPS" are wider than either, and the row carrying one had its driver code and
+   * its pips pulled left while the rows above and below it stayed put. 4.05 rows holds
+   * the widest string the formatter can emit — "+2 LAPS" at the mono face, plus the
+   * right-hand padding — so no value can move a column again.
+   */
+  grid-template-columns:
+    calc(var(--tt-row) * 1.24)
+    clamp(4px, 0.34vw, 9px)
+    minmax(0, 1fr)
+    auto
+    calc(var(--tt-row) * 4.05);
+  /*
+   * Baseline, not centre: the position numeral, the driver code and the interval are
+   * three different faces at three different sizes, and centring their boxes leaves the
+   * digits sitting a pixel or two apart down the row. Sharing one baseline is what makes
+   * twenty rows read as a table instead of a list.
+   */
+  align-items: baseline;
+  /* No column gap: the position block, the team bar and the code read as one continuous
+     leading unit, the way a broadcast tower's left edge does. Air is added where it means
+     something — before the sector pips and before the interval — with margins instead. */
+  gap: 0;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.085), rgba(255, 255, 255, 0.028) 62%, rgba(255, 255, 255, 0.012));
+  will-change: transform;
+  /* The slide is what separates a broadcast tower from a table that snaps. */
+  transition: transform 0.42s cubic-bezier(0.22, 0.61, 0.24, 1), background 0.25s ease;
+}
+
+.tt-row .pos {
+  font-family: 'Barlow', sans-serif;
+  font-weight: 800;
+  font-size: calc(var(--tt-row) * 0.68);
+  text-align: center;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: inset -1px 0 0 rgba(0, 0, 0, 0.5);
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The bar carries the only non-monochrome colour in the package, so it has to be wide
+   enough to read as a team identity and dark-edged so a navy livery still separates. */
+.tt-row .team {
+  align-self: stretch;
+  background: #6b7280;
+  box-shadow: inset -1px 0 0 rgba(0, 0, 0, 0.55);
+}
+
+.tt-row .code {
+  font-family: 'Barlow', sans-serif;
+  font-weight: 700;
+  font-size: calc(var(--tt-row) * 0.8);
+  line-height: var(--tt-row);
+  letter-spacing: 0.04em;
+  color: #fff;
+  padding-left: calc(var(--tt-row) * 0.2);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.tt-row .marks {
+  display: flex;
+  align-items: center;
+  align-self: center;
+  gap: calc(var(--tt-row) * 0.14);
+  margin-left: calc(var(--tt-row) * 0.3);
+}
+
+/*
+ * Base state is "no sector time yet": an empty slot with a visible rim, not a filled pip.
+ * A grey pip and a set pip differ only in value and the tower ends up claiming data it
+ * does not have — but the rim has to be drawn, or an unset sector is indistinguishable
+ * from a rendering bug. The pip is sized off the row so it scales with the tower.
+ */
+.tt-row .sector {
+  width: calc(var(--tt-row) * 0.46);
+  height: calc(var(--tt-row) * 0.30);
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+  border-radius: 1px;
+  flex: 0 0 auto;
+  transition: background 0.18s ease, box-shadow 0.18s ease;
+}
+
+/* A set pip is solid colour with a dark rim, so purple on a light plate and yellow on a
+   dark one both keep an edge. */
+.tt-row .sector.s-purple,
+.tt-row .sector.s-green,
+.tt-row .sector.s-yellow,
+.tt-row .sector.s-white {
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.55);
+}
+
+.tt-row .sector.s-purple { background: var(--apex-purple); }
+.tt-row .sector.s-green { background: var(--apex-good); }
+.tt-row .sector.s-yellow { background: var(--apex-warn); }
+.tt-row .sector.s-white { background: #e8ecf2; }
+
+/*
+ * The compound marker carries a glyph, not just a hue. As a bare ring at 11 px it was a
+ * coloured dot: soft red and wet blue are the only pair of the five a viewer separates
+ * by hue alone at that size, and the letter the code had already resolved was being
+ * thrown away. Ring plus letter in the band colour is the Pirelli sidewall, and it reads
+ * whether or not the viewer knows the colours.
+ */
+.tt-row .tyre {
+  width: calc(var(--tt-row) * 0.62);
+  height: calc(var(--tt-row) * 0.62);
+  border-radius: 50%;
+  border: calc(var(--tt-row) * 0.1) solid #f5c400;
+  background: rgba(0, 0, 0, 0.78);
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  margin-left: calc(var(--tt-row) * 0.14);
+  font-family: 'Barlow', sans-serif;
+  font-style: normal;
+  font-weight: 800;
+  font-size: calc(var(--tt-row) * 0.36);
+  line-height: calc(var(--tt-row) * 0.42);
+  text-align: center;
+  color: #f5c400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tt-row .pit {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 700;
+  font-size: calc(var(--tt-row) * 0.52);
+  line-height: calc(var(--tt-row) * 0.76);
+  letter-spacing: 0.08em;
+  color: #0a0a0c;
+  background: var(--apex-warn);
+  padding: 0 calc(var(--tt-row) * 0.18);
+  border-radius: 1px;
+  margin-left: calc(var(--tt-row) * 0.1);
+  flex: 0 0 auto;
+  /* Collapsed rather than merely transparent: an invisible PIT badge still reserved its
+     width, which shifted the interval column on every row that was not in the pits. */
+  display: none;
+}
+
+/*
+ * The badge takes the sector pips' place rather than sitting next to them. A car in the
+ * pit lane is not setting a sector time, so the pips have nothing to say; showing both
+ * added the badge's width to the marks block and pushed that one row's compound marker
+ * and driver code out of line with every other row on the plate.
+ */
+.tt-row.in-pit .pit { display: block; }
+.tt-row.in-pit .sector { display: none; }
+
+.tt-row .gap {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+  font-weight: 600;
+  font-size: calc(var(--tt-row) * 0.8);
+  line-height: var(--tt-row);
+  text-align: right;
+  /* The track above owns the width; the element only has to fill it. */
+  min-width: 0;
+  padding-right: calc(var(--tt-row) * 0.28);
+  color: rgba(255, 255, 255, 0.94);
+  white-space: nowrap;
+}
+
+/* LEADER is a state, not a measurement — set it in the label face so it never reads as
+   a number, and let the intervals below it carry the eye. */
+.tt-row.is-leader .gap {
+  font-family: 'Barlow Condensed', 'Barlow', sans-serif;
+  font-weight: 700;
+  font-size: calc(var(--tt-row) * 0.58);
+  color: var(--apex-text-dim);
+  letter-spacing: 0.12em;
+}
+
+.tt-row .gap.no-data { color: var(--apex-text-mute); }
+
+/*
+ * The player row used to be a red wash across the whole width, which put the driver code
+ * on a mid-tone pink and cost it most of its contrast. The identity now sits in the
+ * position block and the leading edge; the row plate stays dark so the text does not move.
+ */
+/*
+ * The leading edge is painted over the plate, not inserted into the row.
+ *
+ * As a `border-left-width` it was part of the row's box, so the one row the driver
+ * actually reads was the one row whose columns did not line up: measured off the 1080p
+ * capture, the player's driver code sat 3 px right of every other code in the tower and
+ * its position numeral 3 px right of the column of numerals above and below it. An
+ * absolutely positioned marker on a row that is already `position: absolute` costs the
+ * layout nothing and looks identical.
+ */
+.tt-row.is-player {
+  background: linear-gradient(90deg, rgba(225, 6, 0, 0.42), rgba(225, 6, 0, 0.13) 46%, rgba(255, 255, 255, 0.05));
+}
+
+.tt-row.is-player::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: clamp(3px, 0.2vw, 5px);
+  background: #fff;
+  pointer-events: none;
+}
+
+.tt-row.is-player .pos {
+  background: var(--apex-red);
+  color: #fff;
+}
+
+.tt-row.is-player .code { color: #fff; }
+
+.tt-row.is-retired { opacity: 0.55; }
+.tt-row.is-retired .code { color: var(--apex-text-dim); }
+.tt-row.is-retired .gap { color: var(--apex-bad); }
+
+.tt-row.flag-blue .pos { background: #1a5adc; }
+
+/* A brief flare as a row changes place, the way a broadcast tower kicks. */
+.tt-row.gained { box-shadow: inset 0 0 0 1px rgba(33, 209, 107, 0.7); }
+.tt-row.lost { box-shadow: inset 0 0 0 1px rgba(255, 59, 48, 0.7); }
+
+/*
+ * The cut.
+ *
+ * A tower that pins the leader and then jumps to the player's own battle has to say so,
+ * or P1 followed by P9 reads as a tower that has lost eight cars. The marker occupies a
+ * full slot and deliberately carries no row gradient of its own: the plate shows through
+ * where a car's plate would have been, so the eye reads absence rather than a car whose
+ * data failed to arrive. Three dots at a third of the row's ink weight are the whole
+ * graphic — anything louder competes with the classification it is interrupting.
+ */
+.tt-break {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: var(--tt-row);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--tt-row) * 0.26);
+  background: rgba(0, 0, 0, 0.28);
+  box-shadow:
+    inset 0 1px 0 rgba(0, 0, 0, 0.4),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.05);
+  pointer-events: none;
+}
+
+.tt-break i {
+  width: calc(var(--tt-row) * 0.13);
+  height: calc(var(--tt-row) * 0.13);
+  border-radius: 50%;
+  background: rgba(243, 245, 248, 0.5);
+}
+
+/* Bottom band: energy and fuel left, cluster centre, DRS and tyres right. */
+
+.hud-bottom {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: var(--apex-pad);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: clamp(8px, 1vw, 26px);
+  padding: 0 var(--apex-pad);
+}
+
+.hud-side {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(4px, 0.5vh, 9px);
+  /* Wide enough that the longest caption in the package ("Bias front", "Brakes") still
+     has clear air before the numeral column at every supported width. The 248 px floor
+     is measured, not chosen: at the label size this package sets, a 212 px panel clipped
+     "Brakes" against the tyre canvas at 1280x720. */
+  width: clamp(248px, 18vw, 460px);
+}
+
+/* Stretch so DRS and the tyre plate share one edge; the extra air is what keeps the
+   tyre widget from reading as the DRS panel's own body — at 5.4 px they read as one
+   plate with a green header. */
+.hud-side.right {
+  align-items: stretch;
+  gap: clamp(6px, 0.72vh, 13px);
+}
+
+.hud-block {
+  padding: clamp(6px, 0.78vh, 13px) clamp(9px, 0.7vw, 18px);
+  display: flex;
+  flex-direction: column;
+  gap: clamp(4px, 0.5vh, 8px);
+}
+
+/*
+ * Two columns rather than space-between, so every value in a panel starts at the same
+ * x and the numerals stack into a column the eye can scan. Broadcast graphics are read
+ * in a glance at 300 km/h; a ragged right edge costs a corner.
+ */
+.hud-block .row,
+.tyre-meta .row {
+  display: grid;
+  /* minmax(0, 1fr): the label yields before the number does, so a long unit can never
+     push the value out past the panel edge. */
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 0 clamp(6px, 0.5vw, 14px);
+}
+
+.stat {
+  display: inline-flex;
+  align-items: baseline;
+  justify-self: end;
+  gap: 0.3em;
+}
+
+.stat .apex-value {
+  min-width: 3.6ch;
+  text-align: right;
+}
+
+/* The unit is furniture, not data: same case as the labels, a third of their weight. */
+.stat .unit {
+  font-family: 'Barlow Condensed', 'Barlow', sans-serif;
+  font-weight: 600;
+  font-size: var(--apex-label);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--apex-text-mute);
+  min-width: 1.6em;
+  text-align: left;
+}
+
+/* Energy store meter. */
+
+.ers-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.ers-mode {
+  font-family: 'Barlow', sans-serif;
+  font-weight: 800;
+  /* The mode is the value half of the ERS header; below the label size it reads as
+     furniture rather than as the state of the power unit. */
+  font-size: clamp(13px, 0.95vw, 25px);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--apex-cyan);
+}
+
+.ers-mode.m-0 { color: var(--apex-text-mute); }
+.ers-mode.m-2 { color: var(--apex-warn); }
+.ers-mode.m-3 { color: var(--apex-red); }
+
+.meter {
+  position: relative;
+  height: clamp(7px, 0.95vh, 16px);
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid var(--apex-stroke);
+  overflow: hidden;
+}
+
+.meter .fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0%;
+  background: linear-gradient(90deg, #12a9d6, var(--apex-cyan));
+  transition: width 0.12s linear;
+}
+
+.meter .fill.fuel { background: linear-gradient(90deg, #7a6a2a, #f2d24a); }
+.meter .fill.low { background: linear-gradient(90deg, #7a2020, var(--apex-bad)); }
+
+/* Segment ticks drawn as a mask so the bar reads as cells, not a smooth wash. */
+.meter .ticks {
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent 0 calc(12.5% - 1px),
+    rgba(6, 7, 10, 0.9) calc(12.5% - 1px) 12.5%
+  );
+  pointer-events: none;
+}
+
+.meter .deploy {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0%;
+  background: rgba(255, 255, 255, 0.55);
+  mix-blend-mode: overlay;
+  transition: width 0.1s linear;
+}
+
+.harvest-dot {
+  align-self: center;
+  width: clamp(5px, 0.38vw, 10px);
+  height: clamp(5px, 0.38vw, 10px);
+  border-radius: 50%;
+  background: var(--apex-good);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.55);
+  opacity: 0.22;
+  flex: 0 0 auto;
+  transition: opacity 0.1s linear;
+}
+
+.harvest-dot.on { opacity: 1; }
+
+/* DRS entitlement. */
+
+/*
+ * Idle DRS sat on a 3% white fill, which over a sunlit kerb or a white wall left dark-grey
+ * letters on a bright ground — the one panel that has to be readable the instant it changes
+ * state was the least readable in the package. It is a plate now, like everything else, and
+ * the state is carried by ink colour and fill rather than by the panel appearing at all.
+ */
+.drs-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(4px, 0.4vw, 10px);
+  padding: clamp(6px, 0.85vh, 14px) 0;
+  font-family: 'Barlow', sans-serif;
+  font-weight: 800;
+  font-size: clamp(13px, 1.05vw, 30px);
+  letter-spacing: 0.22em;
+  line-height: 1;
+  color: rgba(243, 245, 248, 0.55);
+  transition: color 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+}
+
+.drs-box.available {
+  color: #0a0a0c;
+  background: var(--apex-good);
+  border-color: var(--apex-good);
+  animation: drs-flash 0.44s steps(1, end) infinite;
+}
+
+.drs-box.open {
+  color: #0a0a0c;
+  background: var(--apex-good);
+  border-color: var(--apex-good);
+  box-shadow: inset 0 0 0 clamp(2px, 0.16vw, 4px) rgba(6, 7, 10, 0.85);
+}
+
+@keyframes drs-flash {
+  0% { background: var(--apex-good); border-color: var(--apex-good); color: #0a0a0c; }
+  50% { background: rgba(8, 24, 15, 0.94); border-color: rgba(33, 209, 107, 0.75); color: var(--apex-good); }
+}
+
+/* Tyre widget. */
+
+/*
+ * The four temperatures are the only numbers on this panel a driver reads mid-corner,
+ * and beside the compound block they had nowhere to grow: at clamp(66px, 5.6vw, 140px)
+ * the canvas presented 260 logical px at 107 CSS px, a scale of 0.41, which put the
+ * temperature numerals in an 18 x 27 px cell with a measured 7 px cap at 1920x1080.
+ *
+ * Stacking the grid over its own captions is what buys the width back, and the numerals
+ * now ink a measured 13-14 px cap at 1080p. But the previous package then let the widget
+ * keep every pixel that move handed it: 343 x 310 px of plate in the corner of the frame,
+ * a block rather than an instrument, sitting 5 px under the DRS panel.
+ *
+ * The size the numerals need is a *vertical* scale. HUD.js measures this element's real
+ * CSS box and scales the drawing to it, so the cap height is set by the box height alone
+ * — 200 logical px must present at ~207 CSS px for a 13 px cap, and nothing about that
+ * requires the widget to be 207 px tall. The instrument HUD.js draws occupies logical
+ * x 29.75..226 and y 3.75..176 of the 260 x 200 space; the remaining 25 % of the width
+ * and 14 % of the height is empty. Pulling that margin off with negative margins under
+ * `overflow: hidden` crops the empty frame without touching the scale: the box stays
+ * 207 px tall for the type and presents 179 px of it, and the drawn grid meets the
+ * plate's padding exactly where the untrimmed canvas box used to.
+ *
+ * With the padding and the two gaps tightened to match, the plate reads 343 x 265 px at
+ * 1080p — 45 px shorter and hard against its own content on all four sides — and the
+ * numerals are unchanged.
+ */
+.tyre-block {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: clamp(3px, 0.36vh, 7px);
+  padding: clamp(5px, 0.52vh, 10px) clamp(8px, 0.62vw, 16px);
+  /* Crops the canvas's empty frame; see the negative margins below. */
+  overflow: hidden;
+}
+
+/* The aspect is pinned here so the JS can measure the box instead of guessing it. */
+.tyre-block canvas {
+  display: block;
+  /*
+   * The canvas is drawn in a fixed 260 x 200 logical space and this width is the only
+   * thing that scales it, so with the aspect pinned it is what sets the cap height of
+   * the four temperature numerals. The brief pins that at 13 px minimum on a 1920 x 1080
+   * frame: 14vw resolves to 268.8 px there, a 1.034 vertical scale on the 19 px face
+   * HUD.js draws with, which inks a measured 14 px cap. The 208 px floor holds 10.8 px
+   * at 1280x720 and the 320 px ceiling 17 px at 2560x1440.
+   *
+   * 130 % rather than 100 %: the trim below takes 23.5 % of this width back off the two
+   * sides, so the *visible* grid is 76.5 % of it, and 76.5 % of 130 % is 99.5 % — the
+   * grid still cannot reach the plate's edge however narrow the side column resolves to.
+   */
+  --tyre-w: min(130%, clamp(208px, 14vw, 320px));
+  width: var(--tyre-w);
+  height: auto;
+  aspect-ratio: 260 / 200;
+  align-self: center;
+  flex: 0 0 auto;
+  /*
+   * The empty frame around the drawing, expressed as fractions of the canvas width so
+   * one set of numbers holds at every viewport. Left 0.110 (28.6 of the 29.75 logical px
+   * that are blank), right 0.125 (32.5 of 34), top 0.014 (3.6 of 3.75) and bottom 0.090
+   * (23.4 of 24) — each a shade under the true margin, so no rounding can bite into the
+   * lock-up ring that is the outermost thing HUD.js draws. `align-self: center` centres
+   * the margin box, which after the trim is exactly the drawn instrument.
+   */
+  margin:
+    calc(var(--tyre-w) * -0.014)
+    calc(var(--tyre-w) * -0.125)
+    calc(var(--tyre-w) * -0.090)
+    calc(var(--tyre-w) * -0.110);
+}
+
+.tyre-meta {
+  display: flex;
+  flex-direction: column;
+  /* Tighter than the generic block rhythm: three captions under a cropped instrument
+     read as one unit, and the loose rhythm was half of what made this a panel. */
+  gap: clamp(3px, 0.34vh, 6px);
+  flex: 1;
+  min-width: 0;
+}
+
+.compound {
+  display: flex;
+  align-items: center;
+  gap: clamp(5px, 0.42vw, 10px);
+}
+
+/*
+ * The sidewall marker is sized to its own letter, not to the row. At 1.5vw the disc
+ * stood 28.8 px at 1080p around a 15 px glyph and was the tallest thing in the caption
+ * block; 1.34vw puts it at 25.7 px with an 18 px clear bore, which still carries the
+ * letter with air around it and takes 3 px off the widget.
+ */
+.compound .disc {
+  width: clamp(16px, 1.34vw, 34px);
+  height: clamp(16px, 1.34vw, 34px);
+  border-radius: 50%;
+  border: clamp(2px, 0.2vw, 5px) solid #f5c400;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Barlow', sans-serif;
+  font-weight: 800;
+  font-size: clamp(11px, 0.78vw, 20px);
+  color: #fff;
+  background: rgba(0, 0, 0, 0.62);
+}
+
+.compound .cname {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 600;
+  font-size: var(--apex-label);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--apex-text-dim);
+}
+
+/* Delta strip and driver cluster. */
+
+/*
+ * The driver cluster is lifted clear of the steering wheel. It is the one panel read
+ * mid-corner and it cannot be sharing pixels with the wheel's own display; the lift
+ * plus the opaque panel behind it means the two never compete.
+ */
+.hud-centre {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: clamp(4px, 0.5vh, 9px);
+  flex: 0 0 auto;
+  width: clamp(360px, 28vw, 700px);
+  margin-bottom: clamp(38px, 5vh, 96px);
+}
+
+.delta-strip {
+  display: flex;
+  align-items: center;
+  gap: clamp(6px, 0.6vw, 15px);
+  padding: clamp(4px, 0.5vh, 9px) clamp(9px, 0.7vw, 18px);
+}
+
+.delta-bar {
+  position: relative;
+  flex: 1;
+  height: clamp(5px, 0.68vh, 12px);
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid var(--apex-stroke);
+}
+
+.delta-bar .centre {
+  position: absolute;
+  left: 50%;
+  top: -2px;
+  bottom: -2px;
+  width: clamp(1px, 0.1vw, 3px);
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.delta-bar .fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 0%;
+  background: var(--apex-good);
+  transition: width 0.1s linear, left 0.1s linear, background 0.15s ease;
+}
+
+.delta-value {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+  font-weight: 700;
+  font-size: clamp(12px, 0.8vw, 22px);
+  line-height: 1;
+  /* Fixed width in a tabular face: the sign and the leading digit come and go, and a
+     shrink-to-fit readout drags the strike pips left and right as they do. */
+  min-width: 6ch;
+  text-align: right;
+  color: rgba(243, 245, 248, 0.72);
+}
+
+.delta-value.ahead { color: var(--apex-good); }
+.delta-value.behind { color: var(--apex-bad); }
+
+.strikes {
+  display: flex;
+  align-items: center;
+  gap: clamp(3px, 0.24vw, 6px);
+}
+
+.strikes .pip {
+  width: clamp(9px, 0.7vw, 18px);
+  height: clamp(4px, 0.46vh, 9px);
+  background: rgba(255, 255, 255, 0.22);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.5);
+  transform: skewX(-20deg);
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.strikes .pip.on {
+  background: var(--apex-warn);
+  box-shadow: 0 0 clamp(4px, 0.5vw, 11px) rgba(255, 176, 32, 0.7);
+}
+
+.strikes .pip.hot { background: var(--apex-bad); box-shadow: 0 0 clamp(4px, 0.5vw, 11px) rgba(255, 59, 48, 0.75); }
+
+.cluster {
+  position: relative;
+  padding: clamp(4px, 0.5vh, 9px) clamp(6px, 0.5vw, 13px);
+  border-left: clamp(2px, 0.2vw, 5px) solid var(--apex-red);
+  overflow: hidden;
+}
+
+.cluster canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 760 / 176;
+}
+
+/* Race-control banner. */
+
+.hud-banner {
+  position: absolute;
+  top: clamp(52px, 8vh, 150px);
+  left: 50%;
+  transform: translate(-50%, -8px);
+  display: flex;
+  align-items: stretch;
+  opacity: 0;
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+
+.hud-banner.on {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.hud-banner .edge {
+  width: clamp(3px, 0.24vw, 7px);
+  background: var(--apex-red);
+}
+
+.hud-banner .body {
+  padding: clamp(6px, 0.85vh, 14px) clamp(12px, 1vw, 26px);
+  display: flex;
+  flex-direction: column;
+  gap: clamp(2px, 0.3vh, 5px);
+}
+
+.hud-banner .headline {
+  font-family: 'Barlow', sans-serif;
+  font-weight: 800;
+  font-size: clamp(12px, 0.92vw, 26px);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.hud-banner .detail {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: clamp(10px, 0.68vw, 18px);
+  color: var(--apex-text-dim);
+  letter-spacing: 0.04em;
+}
+
+.hud-banner.tone-good .edge { background: var(--apex-good); }
+.hud-banner.tone-purple .edge { background: var(--apex-purple); }
+.hud-banner.tone-warn .edge { background: var(--apex-warn); }
+
+/* Pause and settings overlay. */
+
+.apex-menu {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse at 50% 45%, rgba(8, 9, 12, 0.72), rgba(3, 3, 5, 0.93));
+  backdrop-filter: blur(18px) saturate(0.85);
+  -webkit-backdrop-filter: blur(18px) saturate(0.85);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s ease, visibility 0.2s;
+  pointer-events: none;
+}
+
+.apex-menu.open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.apex-menu .sheet {
+  width: clamp(500px, 52vw, 1080px);
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, rgba(16, 19, 25, 0.94), rgba(7, 8, 11, 0.97));
+  border: 1px solid var(--apex-stroke-hi);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.7);
+  transform: translateY(10px) scale(0.994);
+  transition: transform 0.24s cubic-bezier(0.22, 0.61, 0.24, 1);
+}
+
+.apex-menu.open .sheet { transform: none; }
+
+.apex-menu .sheet-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: clamp(16px, 1.9vh, 34px) clamp(20px, 1.7vw, 44px) clamp(12px, 1.4vh, 24px);
+  border-bottom: 1px solid var(--apex-stroke);
+}
+
+.apex-menu .sheet-head h1 {
+  font-family: 'Barlow', sans-serif;
+  font-weight: 900;
+  font-size: clamp(22px, 1.9vw, 50px);
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+.apex-menu .sheet-head h1 em {
+  font-style: normal;
+  color: var(--apex-red);
+}
+
+.apex-menu .sheet-head .where {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 500;
+  font-size: clamp(10px, 0.72vw, 19px);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--apex-text-dim);
+  text-align: right;
+  line-height: 1.5;
+}
+
+.apex-menu .sheet-body {
+  overflow-y: auto;
+  padding: clamp(12px, 1.5vh, 26px) clamp(20px, 1.7vw, 44px) clamp(16px, 1.9vh, 34px);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 clamp(20px, 2vw, 52px);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.apex-menu .group {
+  padding: clamp(8px, 1vh, 18px) 0;
+}
+
+.apex-menu .group > .apex-label {
+  color: var(--apex-red);
+  letter-spacing: 0.24em;
+  margin-bottom: clamp(6px, 0.8vh, 14px);
+  font-size: clamp(9px, 0.6vw, 16px);
+}
+
+.apex-menu .field {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: clamp(8px, 0.8vw, 20px);
+  padding: clamp(5px, 0.7vh, 12px) 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.045);
+}
+
+.apex-menu .field > label {
+  font-family: 'Barlow', sans-serif;
+  font-weight: 500;
+  font-size: clamp(11px, 0.78vw, 21px);
+  color: rgba(243, 245, 248, 0.86);
+}
+
+.apex-menu .field .readout {
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(10px, 0.68vw, 18px);
+  color: var(--apex-text-dim);
+  min-width: 4.6em;
+  text-align: right;
+}
+
+.apex-menu .field .ctl {
+  display: flex;
+  align-items: center;
+  gap: clamp(6px, 0.6vw, 14px);
+  justify-self: end;
+}
+
+.apex-menu input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: clamp(110px, 10vw, 250px);
+  height: clamp(3px, 0.4vh, 6px);
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  outline: none;
+  cursor: pointer;
+}
+
+.apex-menu input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: clamp(11px, 0.85vw, 20px);
+  height: clamp(11px, 0.85vw, 20px);
+  border-radius: 50%;
+  background: #fff;
+  border: clamp(2px, 0.16vw, 4px) solid var(--apex-red);
+  cursor: pointer;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.6);
+}
+
+.apex-menu input[type='range']::-moz-range-thumb {
+  width: clamp(11px, 0.85vw, 20px);
+  height: clamp(11px, 0.85vw, 20px);
+  border-radius: 50%;
+  background: #fff;
+  border: clamp(2px, 0.16vw, 4px) solid var(--apex-red);
+  cursor: pointer;
+}
+
+.apex-menu .seg {
+  display: flex;
+  border: 1px solid var(--apex-stroke-hi);
+  overflow: hidden;
+}
+
+.apex-menu .seg button {
+  appearance: none;
+  border: 0;
+  border-left: 1px solid var(--apex-stroke);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--apex-text-dim);
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 600;
+  font-size: clamp(10px, 0.66vw, 17px);
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  padding: clamp(4px, 0.6vh, 10px) clamp(8px, 0.72vw, 20px);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.apex-menu .seg button:first-child { border-left: 0; }
+.apex-menu .seg button:hover { background: rgba(255, 255, 255, 0.09); color: var(--apex-text); }
+
+.apex-menu .seg button.on {
+  background: var(--apex-red);
+  color: #fff;
+}
+
+.apex-menu .sheet-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: clamp(10px, 1vw, 24px);
+  padding: clamp(12px, 1.4vh, 24px) clamp(20px, 1.7vw, 44px);
+  border-top: 1px solid var(--apex-stroke);
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.apex-menu .keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: clamp(4px, 0.4vw, 10px) clamp(10px, 0.9vw, 22px);
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: clamp(9px, 0.62vw, 16px);
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--apex-text-mute);
+}
+
+.apex-menu .keys b {
+  color: var(--apex-text-dim);
+  font-weight: 700;
+  margin-right: 0.45em;
+}
+
+.apex-menu .actions { display: flex; gap: clamp(8px, 0.7vw, 18px); }
+
+.apex-menu .btn {
+  appearance: none;
+  border: 1px solid var(--apex-stroke-hi);
+  background: transparent;
+  color: var(--apex-text);
+  font-family: 'Barlow', sans-serif;
+  font-weight: 700;
+  font-size: clamp(11px, 0.76vw, 20px);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: clamp(7px, 0.9vh, 15px) clamp(16px, 1.3vw, 36px);
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.apex-menu .btn:hover { background: rgba(255, 255, 255, 0.08); }
+
+.apex-menu .btn.primary {
+  background: var(--apex-red);
+  border-color: var(--apex-red);
+}
+
+.apex-menu .btn.primary:hover { background: #ff2a20; }
+
+/* Loading screen. */
+
+.apex-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background:
+    radial-gradient(ellipse at 50% 120%, rgba(60, 12, 10, 0.5), transparent 62%),
+    radial-gradient(ellipse at 50% -20%, rgba(28, 34, 48, 0.55), transparent 60%),
+    #05060a;
+  color: var(--apex-text);
+  font-family: 'Barlow', sans-serif;
+  opacity: 1;
+  transition: opacity 0.55s ease;
+  pointer-events: auto;
+}
+
+.apex-loading.fading { opacity: 0; }
+
+/* Fine scanline tint: it reads as a broadcast feed rather than a flat web page. */
+.apex-loading::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.016) 0 1px, transparent 1px 3px);
+  pointer-events: none;
+}
+
+.apex-loading .ld-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: clamp(24px, 4.2vh, 74px) clamp(28px, 3.4vw, 90px) 0;
+}
+
+.apex-loading .wordmark {
+  display: flex;
+  align-items: baseline;
+  gap: clamp(8px, 0.8vw, 20px);
+}
+
+.apex-loading .wordmark .mark {
+  font-family: 'Barlow', sans-serif;
+  font-weight: 900;
+  font-size: clamp(46px, 6.4vw, 168px);
+  letter-spacing: clamp(6px, 0.85vw, 24px);
+  line-height: 0.86;
+  text-transform: uppercase;
+  background: linear-gradient(180deg, #ffffff 26%, #9aa2ae 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.apex-loading .wordmark .slash {
+  width: clamp(4px, 0.4vw, 11px);
+  align-self: stretch;
+  background: var(--apex-red);
+  transform: skewX(-14deg);
+  box-shadow: 0 0 clamp(10px, 1.4vw, 36px) rgba(225, 6, 0, 0.6);
+}
+
+.apex-loading .wordmark .sub {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 500;
+  font-size: clamp(10px, 0.82vw, 22px);
+  letter-spacing: 0.42em;
+  text-transform: uppercase;
+  color: var(--apex-text-mute);
+  padding-bottom: clamp(4px, 0.6vh, 12px);
+}
+
+.apex-loading .session-tag {
+  text-align: right;
+  font-family: 'Barlow Condensed', sans-serif;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  font-size: clamp(10px, 0.76vw, 20px);
+  color: var(--apex-text-mute);
+  line-height: 1.9;
+}
+
+.apex-loading .ld-mid {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+}
+
+.apex-loading .ld-mid canvas {
+  display: block;
+  width: min(52vh, 46vw);
+  height: min(52vh, 46vw);
+  filter: drop-shadow(0 0 clamp(14px, 2vw, 48px) rgba(225, 6, 0, 0.22));
+}
+
+.apex-loading .circuit-name {
+  position: absolute;
+  left: clamp(28px, 3.4vw, 90px);
+  bottom: 0;
+  max-width: 40vw;
+}
+
+.apex-loading .circuit-name .cn-country {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 600;
+  font-size: clamp(11px, 0.86vw, 24px);
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--apex-red);
+}
+
+.apex-loading .circuit-name .cn-title {
+  font-family: 'Barlow', sans-serif;
+  font-weight: 800;
+  font-size: clamp(20px, 2.1vw, 58px);
+  letter-spacing: -0.01em;
+  line-height: 1.06;
+  margin-top: clamp(3px, 0.5vh, 9px);
+}
+
+.apex-loading .circuit-name .cn-stats {
+  display: flex;
+  gap: clamp(14px, 1.4vw, 38px);
+  margin-top: clamp(8px, 1.1vh, 20px);
+}
+
+.apex-loading .circuit-name .cn-stats div {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(2px, 0.35vh, 6px);
+}
+
+.apex-loading .circuit-name .cn-stats span:first-child {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: clamp(8px, 0.58vw, 15px);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--apex-text-mute);
+}
+
+.apex-loading .circuit-name .cn-stats span:last-child {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  font-size: clamp(12px, 0.9vw, 24px);
+}
+
+.apex-loading .ld-bottom {
+  padding: 0 clamp(28px, 3.4vw, 90px) clamp(24px, 4.2vh, 74px);
+}
+
+.apex-loading .progress {
+  position: relative;
+  height: clamp(3px, 0.42vh, 7px);
+  background: rgba(255, 255, 255, 0.09);
+  overflow: hidden;
+}
+
+.apex-loading .progress .bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0%;
+  background: linear-gradient(90deg, #7d0400, var(--apex-red) 62%, #ff5a4a);
+  transition: width 0.35s cubic-bezier(0.3, 0.7, 0.2, 1);
+  box-shadow: 0 0 clamp(8px, 1vw, 24px) rgba(225, 6, 0, 0.65);
+}
+
+/* A specular sweep across the filled portion — the bar never looks parked. */
+.apex-loading .progress .bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  transform: translateX(-100%);
+  animation: ld-sweep 1.5s linear infinite;
+}
+
+@keyframes ld-sweep {
+  to { transform: translateX(100%); }
+}
+
+.apex-loading .status {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-top: clamp(9px, 1.3vh, 22px);
+  gap: 1em;
+}
+
+.apex-loading .status .stage {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 500;
+  font-size: clamp(11px, 0.88vw, 24px);
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: rgba(243, 245, 248, 0.72);
+}
+
+.apex-loading .status .stage::after {
+  content: '';
+  display: inline-block;
+  width: 0.62em;
+  height: 0.62em;
+  margin-left: 0.7em;
+  background: var(--apex-red);
+  animation: ld-pulse 1.05s ease-in-out infinite;
+}
+
+@keyframes ld-pulse {
+  0%, 100% { opacity: 0.15; }
+  50% { opacity: 1; }
+}
+
+.apex-loading .status .pct {
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: clamp(13px, 1.05vw, 28px);
+}
+
+.apex-loading .hint {
+  margin-top: clamp(8px, 1.1vh, 20px);
+  font-family: 'Barlow', sans-serif;
+  font-size: clamp(10px, 0.72vw, 19px);
+  color: var(--apex-text-mute);
+  letter-spacing: 0.03em;
+  max-width: 62ch;
+}
+
+.apex-loading.has-error .progress .bar { background: var(--apex-bad); animation: none; }
+.apex-loading.has-error .progress .bar::after { animation: none; }
+
+.apex-loading .error {
+  display: none;
+  margin-top: clamp(10px, 1.4vh, 24px);
+  padding: clamp(10px, 1.3vh, 22px) clamp(12px, 1vw, 26px);
+  border-left: clamp(3px, 0.24vw, 6px) solid var(--apex-bad);
+  background: rgba(255, 59, 48, 0.08);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: clamp(10px, 0.68vw, 17px);
+  line-height: 1.55;
+  color: #ffd3d0;
+  white-space: pre-wrap;
+  max-height: 22vh;
+  overflow: auto;
+}
+
+.apex-loading.has-error .error { display: block; }
+.apex-loading.has-error .status .stage { color: var(--apex-bad); }
+.apex-loading.has-error .status .stage::after { animation: none; opacity: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tt-row,
+  .apex-menu .sheet,
+  .apex-loading .progress .bar { transition-duration: 0.01ms; }
+  .apex-loading .progress .bar::after,
+  .apex-loading .status .stage::after,
+  .drs-box.available { animation: none; }
+}
