@@ -1,0 +1,36 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Play APEX (Chrome)",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}",
+      "preLaunchTask": "APEX: dev server",
+      "runtimeArgs": ["--start-maximized"]
+    },
+    {
+      "name": "Play APEX (Edge)",
+      "type": "msedge",
+      "request": "launch",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}",
+      "preLaunchTask": "APEX: dev server",
+      "runtimeArgs": ["--start-maximized"]
+    },
+    {
+      "name": "Play APEX (Desktop window)",
+      "type": "node",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/electron",
+      "windows": {
+        "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/electron.cmd"
+      },
+      "args": ["desktop/main.cjs"],
+      "preLaunchTask": "APEX: build",
+      "console": "integratedTerminal"
+    }
+  ]
+}

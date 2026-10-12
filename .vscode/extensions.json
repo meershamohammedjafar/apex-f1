@@ -1,0 +1,8 @@
+{
+  "recommendations": [
+    "ms-vscode.live-server",
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "slevesque.shader"
+  ]
+}

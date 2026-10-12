@@ -280,7 +280,7 @@ export class MaterialLibrary {
   texture(name) -> THREE.Texture    // procedurally generated, cached
 }
 ```
-All textures are generated procedurally (no binary assets in the repo). Every surface
+All textures are generated procedurally (no binary texture assets in the repo; the only binary file is the README clip in `media/`). Every surface
 material must supply `map`, `normalMap`, `roughnessMap` and, where relevant, `aoMap`.
 Colour textures use `SRGBColorSpace`; data textures (normal/roughness/AO) use `NoColorSpace`.
 

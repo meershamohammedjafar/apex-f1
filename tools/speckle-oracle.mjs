@@ -1,20 +1,4 @@
 #!/usr/bin/env node
-/**
- * Engine-cover speckle oracle — the acceptance metric for the heat-haze rework.
- *
- * Replicates the round-8 bisection protocol that pinned the "rainbow corruption" on
- * HeatHaze: chase-hero framing at 1280x720/medium (fast profile: godrays, motion blur
- * and AO skipped), 2 simulated seconds, 4 presents, then the speckle fraction over the
- * engine-cover box x 0.33-0.52, y 0.35-0.60 with 3x3-neighbour deviation > 39/255.
- *
- * Round-8 reference numbers (pre-fix build): baseline 15.16%, heat disabled 3.25%.
- * Acceptance for the fix: `on` within ~0.5 points of `off`.
- *
- *   node tools/speckle-oracle.mjs            # heat on vs heat off
- *   node tools/speckle-oracle.mjs on gain0   # any subset of: on off gain0
- *
- * Assumes dist/ is built. Starts its own vite preview on a private port.
- */
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import { writeFile, mkdir } from 'node:fs/promises';
@@ -83,7 +67,7 @@ async function waitForServer(url, timeoutMs = 60000) {
     try {
       const res = await fetch(url);
       if (res.ok) return true;
-    } catch { /* not up yet */ }
+    } catch { }
     await new Promise((r) => setTimeout(r, 300));
   }
   return false;

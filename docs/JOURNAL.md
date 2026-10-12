@@ -2,8 +2,8 @@
 
 The running story of how this game got built: what was attempted, what broke, and what
 was learned along the way. Written as a working diary, not a formal document. The deep
-technical reference (constants, workarounds, module APIs) lives in the code comments;
-this file is the narrative.
+technical reference (constants, workarounds, module APIs) lives in
+`docs/TECHNICAL-NOTES.md`; this file is the narrative.
 
 Newest entries are at the bottom.
 
@@ -74,8 +74,8 @@ round 4 on, every change brief pins exact numbers ("halo cross-section 20×32mm"
 "mid-brightness between 88 and 112", "clip no more than 1.2% of pixels") and every
 claim must come with a measurement. Two small tools were built for this:
 `tools/analyse.mjs` (reads a screenshot and reports brightness statistics and shadow
-contrast) and later `tools/verify-gameplay.mjs` (runs a whole race with no graphics in
-seconds and checks lap times, speeds and that nothing explodes into NaN).
+contrast) and later `tools/verify-gameplay.mjs` (simulates minutes of racing with no
+graphics in seconds and reports lap times, speeds and any NaN, for a person to read).
 
 **Round 4 was never scored** — its changes doubled render cost and every screenshot
 timed out. The velocity-buffer fix (per-object motion tracking) was correct and cured
@@ -216,6 +216,49 @@ which mattered for the first time now that verification runs on a Windows machin
 
 ---
 
+## Aug 30 — Round 9: five wins, one own goal, and a scoring trap
+
+The biggest round yet: five fix passes, then a repo-wide comment strip, then capture
+and review. The review score came back at **45/100 — the lowest since round 1** — and
+that number is misleading in an instructive way. Three separate things got tangled:
+
+**The real wins, all verified:**
+- **Performance:** the capture wall-clock for the reference shot dropped ~30% with the
+  image provably unchanged (brightness statistics within a quarter of a percent). The
+  brightness meter now samples every 4th frame, the cockpit mirrors refresh
+  alternately, and a redundant sun-visibility measurement stopped running five times
+  more often than anyone read it. Press backquote (`` ` ``) in game for the new FPS
+  counter.
+- **Pause flow:** Escape now opens a proper pause menu — resume, restart, settings,
+  quit to menu — tested through three full quit-and-restart cycles without leaks.
+- **Audio:** a code review found and fixed unramped volume changes (the classic source
+  of clicks and pops) and aligned the gearshift sound with the new smooth-shift
+  physics. Nothing in the review loop can hear, so my own ears are the test bench here.
+- **The comment strip:** all code comments removed, with their knowledge extracted
+  first into `docs/TECHNICAL-NOTES.md`. Build, gameplay and captures verified unbroken
+  after.
+
+**The own goal:** aiming the sunset scenario at the newly visible sun revealed that the
+auto-exposure had a floor — a limit on how far it may darken — set for normal scenes.
+Point the camera at the sun and it hits that floor and the whole frame blows out to
+white. The review marked the whiteout down hard, in every dimension. Fixed the same
+day: the floor was lowered (0.28 to 0.06), and an A/B test proved the change is
+invisible on every normal frame (0.7% difference) while the sunset recovered from a
+234/255 whiteout to a readable 123.
+
+**The scoring trap:** this round's screenshots were captured at 720p while every
+earlier scored round was 1080p — so the review also punished ten "mushier" frames
+that were actually rendering identically. Lesson for the process: every review must
+compare like-for-like, and the capture resolution is now part of the gate.
+
+**The engine cover, seen from this round.** Round 9 ran alongside the white-whale hunt
+in the entry above, on a copy of the game without the heat-haze fix, so the rainbow was
+still in its chase frames. Its own attack on the bug — a disciplined oracle-table
+round — didn't kill it either, which made four attempts that failed; the haze fix
+above is the one that holds.
+
+---
+
 ## Oct 12 — A moving picture for the README, and a public home for the game
 
 The README was a wall of text, and a racing game sells itself in three seconds of
@@ -227,8 +270,11 @@ eighth gear, 13,400 rpm, DRS open — with a personal-best banner landing mid-cl
 skips the menu, places the car with one of the test scenarios, and then *drives the
 clock itself*: every GIF frame advances the simulation by exactly seven 1/120 s ticks,
 renders once, and takes a screenshot. Because the clock is stepped rather than timed,
-the clip plays back at true speed even though the machine rendering it has no graphics
-card and needed about 6 seconds per frame. The frames are then turned into a GIF in
+the clip's speed does not depend on the machine rendering it, which has no graphics card
+and needed about 6 seconds per frame. It is close to true speed, not exact: at 18 fps a
+frame lasts 55.6 ms but carries 58.3 ms of simulation (120/18 rounds to 7 ticks), so the
+clip runs about 5% fast. Only a frame rate that divides 120 evenly, such as 20 fps
+(6 ticks), plays back exactly. The frames are then turned into a GIF in
 two passes — first build the best 256-colour palette for the whole clip, then map
 every frame onto it — which is what keeps a dark cockpit and a bright sky from
 banding.
@@ -258,9 +304,58 @@ Other shots are available: `chase`, `apex`, `pack` and `grid`.
 link to a repository people can open, and this one is private. Making it public as-is
 wasn't safe: older branches and two closed pull requests carry a work email address in
 their commit details, and GitHub keeps pull-request history permanently — it can't be
-rewritten or deleted from this side. So the public version, `apex-f1`, gets only the
-clean history (two commits plus this work, all under my GitHub no-reply address), and
-this repository stays private as the full working record.
+rewritten or deleted from this side. So the public version, `apex-f1`, gets only clean
+history — the squashed main line plus the Aug 30 – Sep 4 work (round 9 and the new
+docs) merged in as one commit, all under my GitHub no-reply address — and this
+repository stays private as the full working record.
+
+---
+
+## Oct 12 — Two lines of work, merged back into one
+
+Getting the game ready to go public turned up a surprise: my `main` had been rebuilt
+from a copy taken on Aug 30, so it was missing everything from Aug 30 to Sep 4. That
+meant round 9, the sunset exposure fix, the pause menu, the comment clean-up, the
+VS Code setup and three docs (`RUNNING.md`, `TECHNICAL-NOTES.md`, `GOING-NATIVE.md`).
+Meanwhile `main` had work the September line didn't have: the engine-cover haze fix,
+the README and this journal's rewrite. GitHub still had the September commit, so the
+two could be brought back together.
+
+**How the merge went.** Both lines started from the same Aug 30 state, so it was a
+proper three-way merge. Most files only changed on one side and came across untouched.
+Seven files clashed:
+- Two only clashed because one side reworded comments the other side had deleted, so
+  September's version won.
+- The real one was the heat-haze fix (`HeatHaze.js`, `Weather.js`, `RenderPipeline.js`):
+  `main`'s fix had to be re-applied on top of September's reformatted files.
+- `tools/screenshot.mjs` needed `main`'s Windows fixes carried over.
+- This journal and the README were combined by hand.
+- `tools/sync.sh` was dropped, as on `main`.
+
+Each resolution was then checked by a separate reviewer whose only job was to find
+something that had been lost.
+
+**Finishing the comment clean-up.** The September strip had removed JavaScript
+comments but left the ones inside shader code: 388 of them, plus some bundler markers.
+They are all gone now, and what they explained has moved into `docs/TECHNICAL-NOTES.md`.
+To prove the strip changed nothing the graphics card sees, I captured every shader the
+game compiles in five scenes (day, wet, night, sunset chase, low quality), before and
+after. The sets are identical.
+
+**Proving the merged game still works.**
+- **Race:** a full headless race gives exactly the same results as the old `main`.
+  Top speed is 320.4 km/h, median field speed 221.4 km/h and the best lap 1:51.42,
+  with no NaN values and no console errors.
+- **Engine cover:** the speckle check passes on the merged build. Haze on gives
+  4.75% speckle against 5.06% with it off (it was 15.16% before the fix).
+- **Visuals:** side-by-side renders against the old `main` (chase, wet visor, sunset,
+  night) show no regressions. The sunset now faces the sun and stays a readable golden
+  hour rather than blowing out to white.
+- **GIF:** the README clip was re-rendered from the merged build.
+
+One small tooling quirk turned up along the way: on Linux, `tools/speckle-oracle.mjs`
+prints its results but doesn't exit, because the preview server it starts outlives it.
+The numbers are fine; the process just has to be stopped by hand.
 
 ---
 
@@ -275,7 +370,8 @@ this repository stays private as the full working record.
 | 5 | 53 | Exposure calibrated; Wheels.js:407 found |
 | 6 | 49 | Contact shadows land; camera amplifies old bug |
 | 7 | 52 | Tower leader back; gloves get fingers |
-| 8+ | in progress | Feel, menu, performance — and the white whale falls |
+| 8 | — | Feel, menu, performance — and the white whale falls |
+| 9 | 45* | Real perf + pause + audio wins; sunset whiteout (fixed same day); *scored at 720p vs prior 1080p |
 
 The honest read: screenshot scores plateaued near 50 because each round fixed about as
 much as it broke — and the fix for *that* was process, not code: one owner per

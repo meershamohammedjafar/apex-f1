@@ -1,96 +1,92 @@
-import * as THREE from 'three';
-
-/**
- * Procedural noise toolkit and raster helpers for APEX.
- *
- * Everything here runs once, at load time, on plain typed arrays. The design goals are
- * (a) tileability — every generator has a period-wrapped variant so a 1024px map repeated
- * across 5 km of tarmac shows no seam, and (b) throughput — a 1024x1024 fBm field must
- * build in a handful of milliseconds so the loading screen still animates between yields.
- *
- * Convention for every Float32Array field in this file: index = y * width + x, row 0 is
- * v = 0. That matches THREE.DataTexture (which ignores flipY), so a height field, the
- * normal map Sobel-differentiated from it and the colour map derived alongside it all
- * agree on which way is up. Canvas-drawn content is row-flipped on import for the same
- * reason — mixing flipY=true colour maps with flipY=false normal maps mirrors the
- * lighting against the artwork, which is a bug that is very hard to see and very easy
- * to ship.
- */
-
+import * as THREE from "three";
 const F2 = 0.5 * (Math.sqrt(3) - 1);
 const G2 = (3 - Math.sqrt(3)) / 6;
 const F3 = 1 / 3;
 const G3 = 1 / 6;
-
-// 8 evenly spaced 2D gradients; the axis-aligned/diagonal mix of classic Perlin biases
-// the field along the diagonals, which shows up as visible cross-hatching on tarmac.
 const GRAD2 = new Float32Array(16);
 for (let i = 0; i < 8; i++) {
-  const a = (i / 8) * Math.PI * 2;
+  const a = i / 8 * Math.PI * 2;
   GRAD2[i * 2] = Math.cos(a);
   GRAD2[i * 2 + 1] = Math.sin(a);
 }
-
 const GRAD3 = new Float32Array([
-  1, 1, 0, -1, 1, 0, 1, -1, 0, -1, -1, 0,
-  1, 0, 1, -1, 0, 1, 1, 0, -1, -1, 0, -1,
-  0, 1, 1, 0, -1, 1, 0, 1, -1, 0, -1, -1,
+  1,
+  1,
+  0,
+  -1,
+  1,
+  0,
+  1,
+  -1,
+  0,
+  -1,
+  -1,
+  0,
+  1,
+  0,
+  1,
+  -1,
+  0,
+  1,
+  1,
+  0,
+  -1,
+  -1,
+  0,
+  -1,
+  0,
+  1,
+  1,
+  0,
+  -1,
+  1,
+  0,
+  1,
+  -1,
+  0,
+  -1,
+  -1
 ]);
-
 function fade(t) {
   return t * t * t * (t * (t * 6 - 15) + 10);
 }
-
-/** Positive modulo for lattice wrapping; periods are always positive integers. */
 function pmod(n, m) {
   const r = n % m;
   return r < 0 ? r + m : r;
 }
-
 export class Noise {
   constructor(seed = 1) {
     this.reseed(seed);
     this._w = { f1: 0, f2: 0, id: 0, dx: 0, dy: 0 };
     this._warp = { x: 0, y: 0 };
   }
-
   reseed(seed) {
-    this._seed = (seed | 0) || 0x9e3779b9;
+    this._seed = seed | 0 || 2654435769;
     return this;
   }
-
-  /** 32-bit integer hash of a lattice cell. Deterministic, no table lookups, no wraparound bias. */
   hash2(ix, iy) {
-    let h = Math.imul(ix, 0x27d4eb2d) ^ Math.imul(iy, 0x165667b1) ^ Math.imul(this._seed, 0x9e3779b9);
-    h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d);
-    h = Math.imul(h ^ (h >>> 12), 0x297a2d39);
-    return (h ^ (h >>> 15)) >>> 0;
+    let h = Math.imul(ix, 668265261) ^ Math.imul(iy, 374761393) ^ Math.imul(this._seed, 2654435769);
+    h = Math.imul(h ^ h >>> 15, 739982445);
+    h = Math.imul(h ^ h >>> 12, 695872825);
+    return (h ^ h >>> 15) >>> 0;
   }
-
   hash3(ix, iy, iz) {
-    let h = Math.imul(ix, 0x27d4eb2d) ^ Math.imul(iy, 0x165667b1) ^ Math.imul(iz, 0x1b873593)
-      ^ Math.imul(this._seed, 0x9e3779b9);
-    h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d);
-    h = Math.imul(h ^ (h >>> 12), 0x297a2d39);
-    return (h ^ (h >>> 15)) >>> 0;
+    let h = Math.imul(ix, 668265261) ^ Math.imul(iy, 374761393) ^ Math.imul(iz, 461845907) ^ Math.imul(this._seed, 2654435769);
+    h = Math.imul(h ^ h >>> 15, 739982445);
+    h = Math.imul(h ^ h >>> 12, 695872825);
+    return (h ^ h >>> 15) >>> 0;
   }
-
-  /** Uniform [0,1) value keyed by a lattice cell — used for per-feature randomisation. */
   cellRandom(ix, iy) {
     return this.hash2(ix, iy) / 4294967296;
   }
-
   _dot2(ix, iy, dx, dy) {
     const g = (this.hash2(ix, iy) & 7) * 2;
     return GRAD2[g] * dx + GRAD2[g + 1] * dy;
   }
-
   _dot2p(ix, iy, px, py, dx, dy) {
     const g = (this.hash2(pmod(ix, px), pmod(iy, py)) & 7) * 2;
     return GRAD2[g] * dx + GRAD2[g + 1] * dy;
   }
-
-  /** Perlin gradient noise, output in roughly [-1, 1]. */
   perlin2(x, y) {
     const ix = Math.floor(x);
     const iy = Math.floor(y);
@@ -106,8 +102,6 @@ export class Noise {
     const b = n01 + u * (n11 - n01);
     return (a + v * (b - a)) * 1.4142135;
   }
-
-  /** Perlin noise whose lattice wraps every (px, py) units — seamless when tiled. */
   perlin2p(x, y, px, py) {
     const ix = Math.floor(x);
     const iy = Math.floor(y);
@@ -123,8 +117,6 @@ export class Noise {
     const b = n01 + u * (n11 - n01);
     return (a + v * (b - a)) * 1.4142135;
   }
-
-  /** Simplex noise, output in roughly [-1, 1]. Cheaper per-sample than Perlin in 3D. */
   simplex2(xin, yin) {
     const s = (xin + yin) * F2;
     const i = Math.floor(xin + s);
@@ -138,7 +130,6 @@ export class Noise {
     const y1 = y0 - j1 + G2;
     const x2 = x0 - 1 + 2 * G2;
     const y2 = y0 - 1 + 2 * G2;
-
     let n = 0;
     let t0 = 0.5 - x0 * x0 - y0 * y0;
     if (t0 > 0) {
@@ -157,7 +148,6 @@ export class Noise {
     }
     return 70 * n;
   }
-
   simplex3(xin, yin, zin) {
     const s = (xin + yin + zin) * F3;
     const i = Math.floor(xin + s);
@@ -167,22 +157,57 @@ export class Noise {
     const x0 = xin - (i - t);
     const y0 = yin - (j - t);
     const z0 = zin - (k - t);
-
     let i1, j1, k1, i2, j2, k2;
     if (x0 >= y0) {
-      if (y0 >= z0) { i1 = 1; j1 = 0; k1 = 0; i2 = 1; j2 = 1; k2 = 0; }
-      else if (x0 >= z0) { i1 = 1; j1 = 0; k1 = 0; i2 = 1; j2 = 0; k2 = 1; }
-      else { i1 = 0; j1 = 0; k1 = 1; i2 = 1; j2 = 0; k2 = 1; }
+      if (y0 >= z0) {
+        i1 = 1;
+        j1 = 0;
+        k1 = 0;
+        i2 = 1;
+        j2 = 1;
+        k2 = 0;
+      } else if (x0 >= z0) {
+        i1 = 1;
+        j1 = 0;
+        k1 = 0;
+        i2 = 1;
+        j2 = 0;
+        k2 = 1;
+      } else {
+        i1 = 0;
+        j1 = 0;
+        k1 = 1;
+        i2 = 1;
+        j2 = 0;
+        k2 = 1;
+      }
     } else {
-      if (y0 < z0) { i1 = 0; j1 = 0; k1 = 1; i2 = 0; j2 = 1; k2 = 1; }
-      else if (x0 < z0) { i1 = 0; j1 = 1; k1 = 0; i2 = 0; j2 = 1; k2 = 1; }
-      else { i1 = 0; j1 = 1; k1 = 0; i2 = 1; j2 = 1; k2 = 0; }
+      if (y0 < z0) {
+        i1 = 0;
+        j1 = 0;
+        k1 = 1;
+        i2 = 0;
+        j2 = 1;
+        k2 = 1;
+      } else if (x0 < z0) {
+        i1 = 0;
+        j1 = 1;
+        k1 = 0;
+        i2 = 0;
+        j2 = 1;
+        k2 = 1;
+      } else {
+        i1 = 0;
+        j1 = 1;
+        k1 = 0;
+        i2 = 1;
+        j2 = 1;
+        k2 = 0;
+      }
     }
-
     const x1 = x0 - i1 + G3, y1 = y0 - j1 + G3, z1 = z0 - k1 + G3;
     const x2 = x0 - i2 + 2 * G3, y2 = y0 - j2 + 2 * G3, z2 = z0 - k2 + 2 * G3;
     const x3 = x0 - 1 + 3 * G3, y3 = y0 - 1 + 3 * G3, z3 = z0 - 1 + 3 * G3;
-
     let n = 0;
     n += this._corner3(i, j, k, x0, y0, z0);
     n += this._corner3(i + i1, j + j1, k + k1, x1, y1, z1);
@@ -190,17 +215,14 @@ export class Noise {
     n += this._corner3(i + 1, j + 1, k + 1, x3, y3, z3);
     return 32 * n;
   }
-
   _corner3(i, j, k, x, y, z) {
     let t = 0.6 - x * x - y * y - z * z;
     if (t <= 0) return 0;
-    const g = (this.hash3(i, j, k) % 12) * 3;
+    const g = this.hash3(i, j, k) % 12 * 3;
     t *= t;
     return t * t * (GRAD3[g] * x + GRAD3[g + 1] * y + GRAD3[g + 2] * z);
   }
-
-  /** Fractional Brownian motion. Result is amplitude-normalised into [-1, 1]. */
-  fbm2(x, y, octaves = 4, lacunarity = 2.0, gain = 0.5) {
+  fbm2(x, y, octaves = 4, lacunarity = 2, gain = 0.5) {
     let sum = 0, amp = 1, norm = 0, fx = x, fy = y;
     for (let o = 0; o < octaves; o++) {
       sum += amp * this.simplex2(fx, fy);
@@ -211,8 +233,6 @@ export class Noise {
     }
     return sum / norm;
   }
-
-  /** Tileable fBm. `px`,`py` are the lattice periods of octave 0 and must be integers. */
   fbm2p(x, y, px, py, octaves = 4, lacunarity = 2, gain = 0.5) {
     let sum = 0, amp = 1, norm = 0, f = 1;
     for (let o = 0; o < octaves; o++) {
@@ -223,7 +243,6 @@ export class Noise {
     }
     return sum / norm;
   }
-
   fbm3(x, y, z, octaves = 4, lacunarity = 2, gain = 0.5) {
     let sum = 0, amp = 1, norm = 0, f = 1;
     for (let o = 0; o < octaves; o++) {
@@ -234,12 +253,7 @@ export class Noise {
     }
     return sum / norm;
   }
-
-  /**
-   * Ridged multifractal — sharp creases instead of smooth blobs. Drives cracks in
-   * concrete, bark fissures and the tear pattern in graining rubber. Output in [0, 1].
-   */
-  ridged2(x, y, octaves = 5, lacunarity = 2.1, gain = 0.5, offset = 1.0) {
+  ridged2(x, y, octaves = 5, lacunarity = 2.1, gain = 0.5, offset = 1) {
     let sum = 0, amp = 0.5, norm = 0, f = 1, weight = 1;
     for (let o = 0; o < octaves; o++) {
       let n = offset - Math.abs(this.simplex2(x * f, y * f));
@@ -253,8 +267,7 @@ export class Noise {
     }
     return Math.min(1, sum / norm);
   }
-
-  ridged2p(x, y, px, py, octaves = 5, lacunarity = 2, gain = 0.5, offset = 1.0) {
+  ridged2p(x, y, px, py, octaves = 5, lacunarity = 2, gain = 0.5, offset = 1) {
     let sum = 0, amp = 0.5, norm = 0, f = 1, weight = 1;
     for (let o = 0; o < octaves; o++) {
       let n = offset - Math.abs(this.perlin2p(x * f, y * f, Math.round(px * f), Math.round(py * f)));
@@ -268,12 +281,6 @@ export class Noise {
     }
     return Math.min(1, sum / norm);
   }
-
-  /**
-   * Non-tiling Worley/cellular noise. Returns the shared scratch record — read the
-   * fields you need before the next call. `f1` is the distance to the nearest feature
-   * point, `f2` to the second nearest, `id` a stable [0,1) key for the nearest cell.
-   */
   worley2(x, y) {
     const ix = Math.floor(x), iy = Math.floor(y);
     let f1 = 1e18, f2 = 1e18, id = 0;
@@ -282,19 +289,24 @@ export class Noise {
         const cx = ix + ox, cy = iy + oy;
         const h = this.hash2(cx, cy);
         const px = cx + (h & 1023) / 1024;
-        const py = cy + ((h >>> 10) & 1023) / 1024;
+        const py = cy + (h >>> 10 & 1023) / 1024;
         const dx = px - x, dy = py - y;
         const d2 = dx * dx + dy * dy;
-        if (d2 < f1) { f2 = f1; f1 = d2; id = ((h >>> 20) & 4095) / 4096; }
-        else if (d2 < f2) { f2 = d2; }
+        if (d2 < f1) {
+          f2 = f1;
+          f1 = d2;
+          id = (h >>> 20 & 4095) / 4096;
+        } else if (d2 < f2) {
+          f2 = d2;
+        }
       }
     }
     const w = this._w;
-    w.f1 = Math.sqrt(f1); w.f2 = Math.sqrt(f2); w.id = id;
+    w.f1 = Math.sqrt(f1);
+    w.f2 = Math.sqrt(f2);
+    w.id = id;
     return w;
   }
-
-  /** Period-wrapped Worley: cells wrap on (px, py) so the pattern tiles exactly. */
   worley2p(x, y, px, py) {
     const ix = Math.floor(x), iy = Math.floor(y);
     let f1 = 1e18, f2 = 1e18, id = 0;
@@ -303,31 +315,30 @@ export class Noise {
         const cx = ix + ox, cy = iy + oy;
         const h = this.hash2(pmod(cx, px), pmod(cy, py));
         const fx = cx + (h & 1023) / 1024;
-        const fy = cy + ((h >>> 10) & 1023) / 1024;
+        const fy = cy + (h >>> 10 & 1023) / 1024;
         const dx = fx - x, dy = fy - y;
         const d2 = dx * dx + dy * dy;
-        if (d2 < f1) { f2 = f1; f1 = d2; id = ((h >>> 20) & 4095) / 4096; }
-        else if (d2 < f2) { f2 = d2; }
+        if (d2 < f1) {
+          f2 = f1;
+          f1 = d2;
+          id = (h >>> 20 & 4095) / 4096;
+        } else if (d2 < f2) {
+          f2 = d2;
+        }
       }
     }
     const w = this._w;
-    w.f1 = Math.sqrt(f1); w.f2 = Math.sqrt(f2); w.id = id;
+    w.f1 = Math.sqrt(f1);
+    w.f2 = Math.sqrt(f2);
+    w.id = id;
     return w;
   }
-
-  /**
-   * Domain warp: offset the sample point by a vector field of noise. This is what turns
-   * plausible-but-regular fBm into something that looks weathered and organic.
-   * Returns the shared scratch {x, y}.
-   */
   warp2(x, y, amount, freq) {
     const w = this._warp;
     w.x = x + amount * this.simplex2(x * freq + 41.7, y * freq - 13.3);
     w.y = y + amount * this.simplex2(x * freq - 27.1, y * freq + 63.9);
     return w;
   }
-
-  /** Tileable domain warp; the offset field wraps on the same period as the caller's. */
   warp2p(x, y, px, py, amount, freq) {
     const w = this._warp;
     const fpx = Math.max(1, Math.round(px * freq));
@@ -337,17 +348,8 @@ export class Noise {
     return w;
   }
 }
-
-/**
- * Precomputed jittered feature-point grid for cellular patterns.
- *
- * Asphalt aggregate needs ~200x200 stones per tile; hashing nine cells per pixel across
- * a megapixel is measurably slower than reading nine pairs out of a flat Float32Array,
- * so the points are baked once and the query is pure arithmetic. Cell indices wrap, so
- * the pattern is tileable by construction.
- */
 export class WorleyGrid {
-  constructor(cellsX, cellsY, seed = 1, jitter = 1.0) {
+  constructor(cellsX, cellsY, seed = 1, jitter = 1) {
     this.cx = Math.max(1, cellsX | 0);
     this.cy = Math.max(1, cellsY | 0);
     const n = this.cx * this.cy;
@@ -360,21 +362,15 @@ export class WorleyGrid {
         const k = j * this.cx + i;
         const h = noise.hash2(i, j);
         const rx = (h & 1023) / 1024;
-        const ry = ((h >>> 10) & 1023) / 1024;
+        const ry = (h >>> 10 & 1023) / 1024;
         this.points[k * 2] = i + 0.5 + (rx - 0.5) * jitter;
         this.points[k * 2 + 1] = j + 0.5 + (ry - 0.5) * jitter;
-        this.ids[k] = ((h >>> 20) & 4095) / 4096;
-        this.sizes[k] = 0.35 + (((h >>> 6) & 255) / 255) * 0.65;
+        this.ids[k] = (h >>> 20 & 4095) / 4096;
+        this.sizes[k] = 0.35 + (h >>> 6 & 255) / 255 * 0.65;
       }
     }
     this.out = { f1: 0, f2: 0, id: 0, size: 0, dx: 0, dy: 0 };
   }
-
-  /**
-   * Query in normalised tile space; u and v in [0,1) map to the full cell grid.
-   * Distances are compared squared and rooted only twice at the end — nine square
-   * roots per pixel is the difference between a 400 ms tarmac map and a 1.4 s one.
-   */
   query(u, v) {
     const x = u * this.cx;
     const y = v * this.cy;
@@ -393,38 +389,43 @@ export class WorleyGrid {
         const dy = this.points[k * 2 + 1] + shiftY - y;
         const d2 = dx * dx + dy * dy;
         if (d2 < f1) {
-          f2 = f1; f1 = d2; id = this.ids[k]; size = this.sizes[k]; bdx = dx; bdy = dy;
+          f2 = f1;
+          f1 = d2;
+          id = this.ids[k];
+          size = this.sizes[k];
+          bdx = dx;
+          bdy = dy;
         } else if (d2 < f2) {
           f2 = d2;
         }
       }
     }
     const o = this.out;
-    o.f1 = Math.sqrt(f1); o.f2 = Math.sqrt(f2); o.id = id; o.size = size; o.dx = bdx; o.dy = bdy;
+    o.f1 = Math.sqrt(f1);
+    o.f2 = Math.sqrt(f2);
+    o.id = id;
+    o.size = size;
+    o.dx = bdx;
+    o.dy = bdy;
     return o;
   }
 }
-
 export function createField(w, h) {
   return new Float32Array(w * h);
 }
-
-/** Wrapped bilinear sample of a field in normalised [0,1) coordinates. */
 export function sampleField(field, w, h, u, v) {
   let x = u * w - 0.5;
   let y = v * h - 0.5;
   const x0 = Math.floor(x), y0 = Math.floor(y);
   const fx = x - x0, fy = y - y0;
-  const xa = ((x0 % w) + w) % w, xb = (xa + 1) % w;
-  const ya = ((y0 % h) + h) % h, yb = (ya + 1) % h;
+  const xa = (x0 % w + w) % w, xb = (xa + 1) % w;
+  const ya = (y0 % h + h) % h, yb = (ya + 1) % h;
   const a = field[ya * w + xa], b = field[ya * w + xb];
   const c = field[yb * w + xa], d = field[yb * w + xb];
   const top = a + (b - a) * fx;
   const bottom = c + (d - c) * fx;
   return top + (bottom - top) * fy;
 }
-
-/** Separable wrapped box blur, run `passes` times to approach a Gaussian. */
 export function blurField(field, w, h, radius, passes = 2) {
   if (radius < 1) return field;
   const tmp = new Float32Array(w * h);
@@ -442,9 +443,6 @@ export function blurField(field, w, h, radius, passes = 2) {
         sum += field[row + (hi >= w ? hi - w : hi)];
       }
     }
-    // The vertical pass keeps one running sum per column and still walks memory row by
-    // row. Sliding a window down a single column instead costs a cache miss per texel,
-    // which on a 1024-square field is the dominant term in the whole blur.
     const sums = new Float32Array(w);
     for (let k = -r; k <= r; k++) {
       const row = (k < 0 ? k + h : k) * w;
@@ -461,13 +459,6 @@ export function blurField(field, w, h, radius, passes = 2) {
   }
   return field;
 }
-
-/**
- * Wrapped bilinear resample of a periodic field. Used to lift a cheap low-resolution
- * noise field up to texture resolution: a field whose top octave has a lattice period of
- * 32 texels carries no information above that frequency, so evaluating it per-pixel at
- * 1024x1024 is 64x more work than it is worth.
- */
 export function upsampleField(src, sw, sh, dst, dw, dh) {
   const sx = sw / dw;
   const sy = sh / dh;
@@ -475,14 +466,14 @@ export function upsampleField(src, sw, sh, dst, dw, dh) {
     const fy = (y + 0.5) * sy - 0.5;
     let y0 = Math.floor(fy);
     const ty = fy - y0;
-    y0 = ((y0 % sh) + sh) % sh;
+    y0 = (y0 % sh + sh) % sh;
     const y1 = (y0 + 1) % sh;
     const rowA = y0 * sw, rowB = y1 * sw;
     for (let x = 0; x < dw; x++) {
       const fx = (x + 0.5) * sx - 0.5;
       let x0 = Math.floor(fx);
       const tx = fx - x0;
-      x0 = ((x0 % sw) + sw) % sw;
+      x0 = (x0 % sw + sw) % sw;
       const x1 = (x0 + 1) % sw;
       const a = src[rowA + x0], b = src[rowA + x1];
       const c = src[rowB + x0], d = src[rowB + x1];
@@ -493,19 +484,11 @@ export function upsampleField(src, sw, sh, dst, dw, dh) {
   }
   return dst;
 }
-
-/** Samples needed across a tile before a fractal's top octave starts to alias. */
 function autoRes(period, octaves, lacunarity, limit) {
   const top = period * Math.pow(lacunarity, octaves - 1);
   const need = 1 << Math.ceil(Math.log2(Math.max(8, top * 4)));
   return Math.max(8, Math.min(limit, need));
 }
-
-/**
- * Tileable fBm rasterised into a (w x h) field. Sampling happens at whatever resolution
- * the fractal actually needs and is then upsampled, so callers can ask for a period-3
- * blotch field on a 1024px map without paying for it.
- */
 export function fbmField(noise, w, h, px, py, octaves = 4, lacunarity = 2, gain = 0.5, out) {
   const rx = autoRes(px, octaves, lacunarity, w);
   const ry = autoRes(py, octaves, lacunarity, h);
@@ -515,17 +498,15 @@ export function fbmField(noise, w, h, px, py, octaves = 4, lacunarity = 2, gain 
   const bw = direct ? w : rx;
   const bh = direct ? h : ry;
   for (let y = 0; y < bh; y++) {
-    const v = ((y + 0.5) / bh) * py;
+    const v = (y + 0.5) / bh * py;
     for (let x = 0; x < bw; x++) {
-      buf[y * bw + x] = noise.fbm2p(((x + 0.5) / bw) * px, v, px, py, octaves, lacunarity, gain);
+      buf[y * bw + x] = noise.fbm2p((x + 0.5) / bw * px, v, px, py, octaves, lacunarity, gain);
     }
   }
   if (!direct) upsampleField(buf, rx, ry, dst, w, h);
   return dst;
 }
-
-/** Tileable ridged multifractal rasterised into a field, with the same auto-resolution. */
-export function ridgedField(noise, w, h, px, py, octaves = 5, lacunarity = 2, gain = 0.5, offset = 1.0, out) {
+export function ridgedField(noise, w, h, px, py, octaves = 5, lacunarity = 2, gain = 0.5, offset = 1, out) {
   const rx = autoRes(px, octaves, lacunarity, w);
   const ry = autoRes(py, octaves, lacunarity, h);
   const dst = out ?? new Float32Array(w * h);
@@ -534,16 +515,14 @@ export function ridgedField(noise, w, h, px, py, octaves = 5, lacunarity = 2, ga
   const bw = direct ? w : rx;
   const bh = direct ? h : ry;
   for (let y = 0; y < bh; y++) {
-    const v = ((y + 0.5) / bh) * py;
+    const v = (y + 0.5) / bh * py;
     for (let x = 0; x < bw; x++) {
-      buf[y * bw + x] = noise.ridged2p(((x + 0.5) / bw) * px, v, px, py, octaves, lacunarity, gain, offset);
+      buf[y * bw + x] = noise.ridged2p((x + 0.5) / bw * px, v, px, py, octaves, lacunarity, gain, offset);
     }
   }
   if (!direct) upsampleField(buf, rx, ry, dst, w, h);
   return dst;
 }
-
-/** Rescale a field so its min/max land on [lo, hi]. */
 export function normaliseField(field, lo = 0, hi = 1) {
   let min = Infinity, max = -Infinity;
   for (let i = 0; i < field.length; i++) {
@@ -560,13 +539,7 @@ export function normaliseField(field, lo = 0, hi = 1) {
   for (let i = 0; i < field.length; i++) field[i] = lo + (field[i] - min) * k;
   return field;
 }
-
-/**
- * Sobel-differentiate a height field into a tangent-space normal map (OpenGL green-up).
- * `strength` is the height of one field unit relative to one texel of width, so it must
- * be raised when the texture covers more metres per pixel.
- */
-export function normalFromHeight(height, w, h, strength = 2.0, out) {
+export function normalFromHeight(height, w, h, strength = 2, out) {
   const data = out ?? new Uint8Array(w * h * 4);
   for (let y = 0; y < h; y++) {
     const ym = y === 0 ? h - 1 : y - 1;
@@ -578,12 +551,13 @@ export function normalFromHeight(height, w, h, strength = 2.0, out) {
       const h00 = height[rowM + xm], h10 = height[rowM + x], h20 = height[rowM + xp];
       const h01 = height[row0 + xm], h21 = height[row0 + xp];
       const h02 = height[rowP + xm], h12 = height[rowP + x], h22 = height[rowP + xp];
-      const gx = (h20 + 2 * h21 + h22) - (h00 + 2 * h01 + h02);
-      const gy = (h02 + 2 * h12 + h22) - (h00 + 2 * h10 + h20);
+      const gx = h20 + 2 * h21 + h22 - (h00 + 2 * h01 + h02);
+      const gy = h02 + 2 * h12 + h22 - (h00 + 2 * h10 + h20);
       let nx = -gx * strength;
       let ny = -gy * strength;
       const inv = 1 / Math.sqrt(nx * nx + ny * ny + 1);
-      nx *= inv; ny *= inv;
+      nx *= inv;
+      ny *= inv;
       const nz = inv;
       const i = (row0 + x) * 4;
       data[i] = (nx * 0.5 + 0.5) * 255;
@@ -594,12 +568,6 @@ export function normalFromHeight(height, w, h, strength = 2.0, out) {
   }
   return data;
 }
-
-/**
- * Pack ambient occlusion, roughness and metalness into one RGBA texture.
- * three reads aoMap from .r, roughnessMap from .g and metalnessMap from .b, so a single
- * upload serves all three slots — a 3x saving in VRAM and texture units per material.
- */
 export function packORM(ao, rough, metal, w, h, out) {
   const n = w * h;
   const data = out ?? new Uint8Array(n * 4);
@@ -612,12 +580,7 @@ export function packORM(ao, rough, metal, w, h, out) {
   }
   return data;
 }
-
-/**
- * Cheap cavity occlusion: how much lower a texel sits than its blurred neighbourhood.
- * Crevices between aggregate stones go dark, stone crowns stay open.
- */
-export function aoFromHeight(height, w, h, radius = 6, strength = 1.0, out) {
+export function aoFromHeight(height, w, h, radius = 6, strength = 1, out) {
   const blurred = new Float32Array(height);
   blurField(blurred, w, h, radius, 2);
   const ao = out ?? new Float32Array(w * h);
@@ -627,7 +590,6 @@ export function aoFromHeight(height, w, h, radius = 6, strength = 1.0, out) {
   }
   return ao;
 }
-
 export function makeDataTexture(data, w, h, colorSpace = THREE.NoColorSpace, mipmaps = null) {
   const tex = new THREE.DataTexture(data, w, h, THREE.RGBAFormat, THREE.UnsignedByteType);
   tex.colorSpace = colorSpace;
@@ -636,7 +598,6 @@ export function makeDataTexture(data, w, h, colorSpace = THREE.NoColorSpace, mip
   tex.magFilter = THREE.LinearFilter;
   tex.minFilter = THREE.LinearMipmapLinearFilter;
   if (mipmaps && mipmaps.length > 1) {
-    // three uploads mipmaps[i] to level i for a DataTexture and skips glGenerateMipmap.
     tex.mipmaps = mipmaps;
     tex.generateMipmaps = false;
   } else {
@@ -645,51 +606,24 @@ export function makeDataTexture(data, w, h, colorSpace = THREE.NoColorSpace, mip
   tex.needsUpdate = true;
   return tex;
 }
-
-// --- mip chains -----------------------------------------------------------------------
-//
-// The GPU's own mip generator box-filters in whatever space the bytes happen to be in,
-// which is wrong twice over for a PBR set. Colour has to be averaged in linear light or
-// a dark binder eats a bright quartz chip; a normal map has to be averaged as vectors
-// and renormalised or the shading tilt drifts. Worse, neither of those recovers the real
-// problem: a rough surface whose relief lives entirely in the normal map keeps a
-// mirror-flat *roughness* at every mip level, so a hundred metres of tarmac reduces to
-// one large specular lobe that fizzes as the car moves. The fix is Toksvig — measure how
-// much the averaged normal shortened at each level and push the roughness up by exactly
-// that much variance. That is what stops distant asphalt sparkling.
-
 const SRGB_TO_LINEAR = new Float32Array(256);
 for (let i = 0; i < 256; i++) {
   const c = i / 255;
   SRGB_TO_LINEAR[i] = c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
 }
-
-// Encoding back to sRGB is the inner loop of every colour mip level, so the transfer
-// function is tabulated over the linear range rather than paying a pow() per channel
-// per texel. 4096 buckets is far finer than the 8-bit result can resolve.
 const LINEAR_TO_SRGB = new Uint8Array(4097);
 for (let i = 0; i <= 4096; i++) {
   const c = i / 4096;
-  const v = c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+  const v = c <= 31308e-7 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
   LINEAR_TO_SRGB[i] = Math.max(0, Math.min(255, Math.round(v * 255)));
 }
-
 function linearToSrgbByte(c) {
-  const i = c <= 0 ? 0 : c >= 1 ? 4096 : (c * 4096 + 0.5) | 0;
+  const i = c <= 0 ? 0 : c >= 1 ? 4096 : c * 4096 + 0.5 | 0;
   return LINEAR_TO_SRGB[i];
 }
-
-/** Number of mip levels for a w x h image, down to 1x1. */
 function mipLevels(w, h) {
   return Math.floor(Math.log2(Math.max(w, h))) + 1;
 }
-
-/**
- * Box-filtered mip chain for an RGBA byte image. Level 0 is the source buffer itself,
- * as three expects. `srgb` decodes to linear before averaging and re-encodes after.
- * Odd dimensions are handled by clamping the second tap, so non-power-of-two textures
- * (the quality tiers produce 768s and 384s) still get a complete chain.
- */
 export function mipChain(data, w, h, srgb = false) {
   const levels = [{ data, width: w, height: h }];
   let src = data, sw = w, sh = h;
@@ -710,29 +644,24 @@ export function mipChain(data, w, h, srgb = false) {
         if (srgb) {
           for (let k = 0; k < 3; k++) {
             dst[o + k] = linearToSrgbByte(
-              (SRGB_TO_LINEAR[src[a + k]] + SRGB_TO_LINEAR[src[b + k]]
-                + SRGB_TO_LINEAR[src[c + k]] + SRGB_TO_LINEAR[src[d + k]]) * 0.25,
+              (SRGB_TO_LINEAR[src[a + k]] + SRGB_TO_LINEAR[src[b + k]] + SRGB_TO_LINEAR[src[c + k]] + SRGB_TO_LINEAR[src[d + k]]) * 0.25
             );
           }
         } else {
           for (let k = 0; k < 3; k++) {
-            dst[o + k] = (src[a + k] + src[b + k] + src[c + k] + src[d + k] + 2) >> 2;
+            dst[o + k] = src[a + k] + src[b + k] + src[c + k] + src[d + k] + 2 >> 2;
           }
         }
-        dst[o + 3] = (src[a + 3] + src[b + 3] + src[c + 3] + src[d + 3] + 2) >> 2;
+        dst[o + 3] = src[a + 3] + src[b + 3] + src[c + 3] + src[d + 3] + 2 >> 2;
       }
     }
     levels.push({ data: dst, width: dw, height: dh });
-    src = dst; sw = dw; sh = dh;
+    src = dst;
+    sw = dw;
+    sh = dh;
   }
   return levels;
 }
-
-/**
- * Mip chain for a tangent-space normal map, averaged as vectors and renormalised.
- * Returns the levels plus, per level, the length of the averaged normal before
- * renormalisation — the Toksvig variance measure `applyToksvig` consumes.
- */
 export function normalMipChain(data, w, h) {
   const levels = [{ data, width: w, height: h }];
   const lengths = [null];
@@ -757,7 +686,9 @@ export function normalMipChain(data, w, h) {
           ny += src[p + 1] / 127.5 - 1;
           nz += src[p + 2] / 127.5 - 1;
         }
-        nx *= 0.25; ny *= 0.25; nz *= 0.25;
+        nx *= 0.25;
+        ny *= 0.25;
+        nz *= 0.25;
         const m = Math.sqrt(nx * nx + ny * ny + nz * nz);
         const k = y * dw + x;
         len[k] = Math.min(1, m);
@@ -771,19 +702,12 @@ export function normalMipChain(data, w, h) {
     }
     levels.push({ data: dst, width: dw, height: dh });
     lengths.push(len);
-    src = dst; sw = dw; sh = dh;
+    src = dst;
+    sw = dw;
+    sh = dh;
   }
   return { levels, lengths };
 }
-
-/**
- * Fold normal-map variance into an ORM chain's roughness (green) channel, in place.
- *
- * Toksvig's mapping, run through the GGX <-> Blinn exponent bridge: a shortened
- * averaged normal means the sub-texel normals disagreed, which is indistinguishable
- * from a rougher microsurface, so the effective specular power drops by
- * `|N| / (|N| + n(1 - |N|))`. Roughness only ever increases.
- */
 export function applyToksvig(ormLevels, normalLengths) {
   const count = Math.min(ormLevels.length, normalLengths.length);
   for (let l = 1; l < count; l++) {
@@ -805,33 +729,23 @@ export function applyToksvig(ormLevels, normalLengths) {
   }
   return ormLevels;
 }
-
-/** Offscreen canvas, preferring OffscreenCanvas so text rasterisation never touches the DOM. */
 export function createCanvas(w, h) {
-  if (typeof OffscreenCanvas !== 'undefined') {
-    const c = new OffscreenCanvas(w, h);
-    // Some engines only expose a 2d context on OffscreenCanvas behind a flag.
-    if (c.getContext('2d')) return c;
+  if (typeof OffscreenCanvas !== "undefined") {
+    const c2 = new OffscreenCanvas(w, h);
+    if (c2.getContext("2d")) return c2;
   }
-  const c = document.createElement('canvas');
+  const c = document.createElement("canvas");
   c.width = w;
   c.height = h;
   return c;
 }
-
-/**
- * Import canvas pixels as a DataTexture, flipping rows so canvas row 0 (top) becomes
- * v = 1. Every texture in APEX is therefore flipY-agnostic and shares one orientation.
- */
 export function textureFromCanvas(canvas, colorSpace = THREE.SRGBColorSpace) {
   const { data, width, height } = readCanvas(canvas);
   return makeDataTexture(data, width, height, colorSpace);
 }
-
-/** Row-flipped RGBA bytes from a canvas. */
 export function readCanvas(canvas) {
   const w = canvas.width, h = canvas.height;
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
   const src = ctx.getImageData(0, 0, w, h).data;
   const out = new Uint8Array(w * h * 4);
   const stride = w * 4;
@@ -841,49 +755,38 @@ export function readCanvas(canvas) {
   }
   return { data: out, width: w, height: h };
 }
-
-/** Luminance of row-flipped canvas RGBA into a [0,1] field — used to mould text into height. */
 export function canvasToField(canvas, out) {
   const { data, width, height } = readCanvas(canvas);
   const field = out ?? new Float32Array(width * height);
   for (let i = 0; i < field.length; i++) {
     const j = i * 4;
     const a = data[j + 3] / 255;
-    field[i] = ((data[j] * 0.2126 + data[j + 1] * 0.7152 + data[j + 2] * 0.0722) / 255) * a;
+    field[i] = (data[j] * 0.2126 + data[j + 1] * 0.7152 + data[j + 2] * 0.0722) / 255 * a;
   }
   return field;
 }
-
-/** Yield to the host so the loading screen repaints between heavy maps. */
 export function yieldFrame() {
   return new Promise((resolve) => {
-    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => resolve());
+    if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => resolve());
     else setTimeout(resolve, 0);
   });
 }
-
 export function clamp01(v) {
   return v < 0 ? 0 : v > 1 ? 1 : v;
 }
-
 export function mix(a, b, t) {
   return a + (b - a) * t;
 }
-
 export function smoothstep(e0, e1, x) {
   const t = clamp01((x - e0) / (e1 - e0 || 1e-6));
   return t * t * (3 - 2 * t);
 }
-
-/** Decompose 0xRRGGBB into an [r,g,b] byte triple. sRGB byte space throughout. */
 export function rgbOf(hex, out = [0, 0, 0]) {
-  out[0] = (hex >> 16) & 255;
-  out[1] = (hex >> 8) & 255;
+  out[0] = hex >> 16 & 255;
+  out[1] = hex >> 8 & 255;
   out[2] = hex & 255;
   return out;
 }
-
-/** Write a colour into an RGBA byte buffer at texel index `i`, with an optional multiplier. */
 export function writeRGB(data, i, r, g, b, mul = 1) {
   const j = i * 4;
   data[j] = Math.max(0, Math.min(255, r * mul));

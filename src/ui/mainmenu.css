@@ -4,23 +4,27 @@
   z-index: 40;
   display: none;
   pointer-events: none;
-  font-family: 'Barlow', system-ui, sans-serif;
+  font-family:
+    "Barlow",
+    system-ui,
+    sans-serif;
   color: #fff;
 }
-
 .mm.is-open {
   display: block;
   pointer-events: auto;
 }
-
 .mm-scrim {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(120% 90% at 18% 12%, rgba(10, 10, 12, 0.62) 0%, rgba(6, 6, 8, 0.9) 62%, rgba(4, 4, 6, 0.97) 100%);
+    radial-gradient(
+      120% 90% at 18% 12%,
+      rgba(10, 10, 12, 0.62) 0%,
+      rgba(6, 6, 8, 0.9) 62%,
+      rgba(4, 4, 6, 0.97) 100%);
   backdrop-filter: blur(3px) saturate(0.85);
 }
-
 .mm-frame {
   position: relative;
   height: 100%;
@@ -30,7 +34,6 @@
   max-width: 1680px;
   margin: 0 auto;
 }
-
 .mm-header {
   display: flex;
   align-items: flex-end;
@@ -39,27 +42,31 @@
   padding-bottom: clamp(14px, 2vh, 26px);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
-
 .mm-brand {
   display: flex;
   align-items: baseline;
   gap: clamp(10px, 1.1vw, 18px);
 }
-
 .mm-wordmark {
-  font-family: 'Barlow Condensed', 'Barlow', sans-serif;
+  font-family:
+    "Barlow Condensed",
+    "Barlow",
+    sans-serif;
   font-weight: 700;
   font-size: clamp(46px, 6.4vw, 104px);
   line-height: 0.86;
   letter-spacing: 0.012em;
-  background: linear-gradient(178deg, #fff 32%, #b9bcc4 100%);
+  background:
+    linear-gradient(
+      178deg,
+      #fff 32%,
+      #b9bcc4 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
-
 .mm-wordmark::after {
-  content: '';
+  content: "";
   display: inline-block;
   width: clamp(5px, 0.55vw, 9px);
   height: clamp(5px, 0.55vw, 9px);
@@ -67,28 +74,30 @@
   background: #e10600;
   vertical-align: baseline;
 }
-
 .mm-brand-sub {
-  font-family: 'Barlow Condensed', 'Barlow', sans-serif;
+  font-family:
+    "Barlow Condensed",
+    "Barlow",
+    sans-serif;
   font-weight: 500;
   font-size: clamp(13px, 1.15vw, 20px);
   letter-spacing: 0.34em;
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.5);
 }
-
 .mm-venue {
   text-align: right;
 }
-
 .mm-venue-name {
-  font-family: 'Barlow Condensed', 'Barlow', sans-serif;
+  font-family:
+    "Barlow Condensed",
+    "Barlow",
+    sans-serif;
   font-weight: 600;
   font-size: clamp(17px, 1.6vw, 28px);
   letter-spacing: 0.055em;
   text-transform: uppercase;
 }
-
 .mm-venue-meta {
   font-size: clamp(11px, 0.85vw, 14px);
   letter-spacing: 0.2em;
@@ -96,7 +105,6 @@
   color: rgba(255, 255, 255, 0.42);
   margin-top: 3px;
 }
-
 .mm-body {
   align-self: center;
   width: min(760px, 100%);
@@ -108,7 +116,6 @@
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
 }
-
 .mm-row {
   position: relative;
   display: grid;
@@ -121,25 +128,24 @@
   cursor: pointer;
   transition: background 120ms ease, border-color 120ms ease;
 }
-
 .mm-row.is-focused {
   background: rgba(30, 32, 38, 0.92);
   border-left-color: #e10600;
 }
-
 .mm-row-label {
-  font-family: 'Barlow Condensed', 'Barlow', sans-serif;
+  font-family:
+    "Barlow Condensed",
+    "Barlow",
+    sans-serif;
   font-weight: 600;
   font-size: clamp(15px, 1.25vw, 21px);
   letter-spacing: 0.075em;
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.86);
 }
-
 .mm-row.is-focused .mm-row-label {
   color: #fff;
 }
-
 .mm-row-value {
   display: flex;
   align-items: center;
@@ -150,19 +156,16 @@
   color: rgba(255, 255, 255, 0.94);
   white-space: nowrap;
 }
-
 .mm-swatch {
   width: 11px;
   height: 11px;
   border-radius: 1px;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.22);
 }
-
 .mm-row-arrows {
   display: flex;
   gap: 3px;
 }
-
 .mm-arrow {
   all: unset;
   cursor: pointer;
@@ -172,21 +175,17 @@
   color: rgba(255, 255, 255, 0.35);
   border-radius: 2px;
 }
-
 .mm-arrow:hover {
   color: #fff;
   background: rgba(255, 255, 255, 0.1);
 }
-
 .mm-arrow:active {
   background: #e10600;
   color: #fff;
 }
-
 .mm-row.is-focused .mm-arrow {
   color: rgba(255, 255, 255, 0.7);
 }
-
 .mm-row-blurb {
   grid-column: 1 / -1;
   font-size: clamp(11px, 0.86vw, 14px);
@@ -194,26 +193,21 @@
   color: rgba(255, 255, 255, 0.4);
   margin-top: 2px;
 }
-
 .mm-row-action {
   grid-template-columns: 1fr;
   margin-top: 10px;
   background: rgba(24, 25, 30, 0.72);
 }
-
 .mm-row-action .mm-row-label {
   font-size: clamp(16px, 1.35vw, 23px);
   letter-spacing: 0.14em;
 }
-
 .mm-row-action.is-focused {
   background: #e10600;
 }
-
 .mm-row-action.is-focused .mm-row-label {
   color: #fff;
 }
-
 .mm-controls {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(232px, 1fr));
@@ -221,7 +215,6 @@
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
-
 .mm-control {
   display: flex;
   align-items: center;
@@ -230,19 +223,19 @@
   padding: clamp(9px, 1.05vh, 13px) clamp(13px, 1.2vw, 18px);
   background: rgba(16, 17, 20, 0.86);
 }
-
 .mm-control-label {
   font-size: clamp(12px, 0.95vw, 15px);
   color: rgba(255, 255, 255, 0.74);
 }
-
 .mm-control-keys {
   display: flex;
   gap: 5px;
 }
-
 .mm-key {
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-family:
+    "JetBrains Mono",
+    ui-monospace,
+    monospace;
   font-size: clamp(10px, 0.78vw, 12px);
   line-height: 1;
   padding: 5px 7px;
@@ -253,7 +246,6 @@
   border-radius: 3px;
   white-space: nowrap;
 }
-
 .mm-pad-note {
   margin: 14px 0 4px;
   font-size: clamp(11px, 0.86vw, 14px);
@@ -261,7 +253,6 @@
   color: rgba(255, 255, 255, 0.4);
   max-width: 62ch;
 }
-
 .mm-hint {
   padding-top: clamp(12px, 2vh, 22px);
   border-top: 1px solid rgba(255, 255, 255, 0.1);
@@ -270,13 +261,21 @@
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.34);
 }
-
 @media (max-height: 860px) {
-  .mm-row { padding-top: 9px; padding-bottom: 9px; }
-  .mm-row-blurb { display: none; }
+  .mm-row {
+    padding-top: 9px;
+    padding-bottom: 9px;
+  }
+  .mm-row-blurb {
+    display: none;
+  }
 }
-
 @media (max-height: 620px) {
-  .mm-body { max-height: 68vh; }
-  .mm-row { padding-top: 7px; padding-bottom: 7px; }
+  .mm-body {
+    max-height: 68vh;
+  }
+  .mm-row {
+    padding-top: 7px;
+    padding-bottom: 7px;
+  }
 }
