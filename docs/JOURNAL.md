@@ -354,8 +354,98 @@ after. The sets are identical.
 - **GIF:** the README clip was re-rendered from the merged build.
 
 One small tooling quirk turned up along the way: on Linux, `tools/speckle-oracle.mjs`
-prints its results but doesn't exit, because the preview server it starts outlives it.
-The numbers are fine; the process just has to be stopped by hand.
+printed its results but didn't exit, because the preview server it starts outlived it.
+That one is fixed now (next entry).
+
+---
+
+## Oct 12 — Two follow-up fixes: light shafts and mirrors
+
+Two effects got a proper second look: the light shafts that stream from a low sun, and
+the heat haze. Both had a real bug, and the tool that measures the haze had one of its
+own.
+
+**The light shafts multiplied the sky by hundreds.** The shafts are made by smearing
+the bright sky around the sun along lines that point at the sun, in three passes. Each
+pass adds its samples up instead of averaging them, so by the end a patch of sky came
+out about 300 times brighter at high quality and about 760 times on ultra. The step
+that lays the shafts over the picture then took 85% of that sum, which meant adding
+roughly 256 times the sky's own brightness on top of the frame (648 times on ultra).
+It went unnoticed because, until the sunset scenario was aimed at the sun, no stock
+scenario had the sun in frame: it was always behind the camera or below the horizon, so
+the shaft pass never ran. With the sun on screen (high quality, looking down the
+descent to Bruxelles) the frame turned into a white veil: auto-exposure dropped from
+2.0 to 0.3 trying to hold it, and the median brightness still went from 130 to 232.
+
+**The fix.** The shaft step now divides that build-up back out, so a shaft is a fixed
+share of the sky it is cut from (a quarter) whatever number of samples the quality
+tier takes. I tried three strengths on the sunset frame, against a median of 130 with
+shafts off: a quarter gave 138 and clear beams through the cloud and round the halo,
+a half gave 143 and the sun's disc started to glow, and full strength gave 149 and
+hazed the road. A quarter it is. The lens flare still reads the raw shaft buffer to
+judge how much of the sun is visible, so it behaves exactly as before. Ultra had a
+second problem: at 24 samples the sum at the sun's disc overflowed the half-precision
+buffer, and that infinity knocked out the bloom and lens ghosts round the disc. Each
+pass is now capped just under the format's limit, which changes nothing anywhere the
+sum fits.
+
+**Measured** (sunset frame looking at the sun, 1280×720, median brightness via
+`tools/analyse.mjs`):
+- before, shafts on: **231.6** (exposure 0.30)
+- before, shafts off: **130.3** (exposure 2.00)
+- after, high quality: **137.9** (exposure 1.82), with directional beams
+- after, ultra: **136.2**, with no infinite or NaN pixels left
+
+**The haze showed up in the mirrors.** The haze works out what to bend from the
+pixel's position on the main screen. The cockpit mirrors draw the whole scene again
+from their own cameras into a small 512-pixel picture, and there that same position
+points at an unrelated patch of the main view. My own car's exhaust plume sits right in
+the left mirror, so the old engine-cover confetti came back there in miniature (up to
+83 levels of difference). The haze now lives on its own layer, which only the main
+camera draws. Difference in the mirror after the fix: 0.
+
+**The wet visor could refract a frozen frame.** The raindrops on the visor bend a copy
+of the previous frame that the haze takes. Drop to the low quality tier mid-race and
+the haze switches off and stops refreshing that copy, but it kept handing the visor its
+last one, so in the wet the drops would have shown a picture frozen at the moment of
+the switch. With the haze off it now hands over nothing, and the drops just darken and
+show their rims.
+
+**The speckle check compared two different camera angles.** `tools/speckle-oracle.mjs`
+measures the engine cover with the haze on, off, and at zero strength. The "on" run was
+the only one with no setup step, so it reached the scenario one browser round-trip
+sooner, and the game keeps running in real time until the tool stops it. The camera's
+field of view eases toward its target and survives the scenario reset, so "on" was shot
+at 32.573° and the other two at 32.563°. That tiny zoom showed up as a difference
+across the whole frame, with colour fringes growing toward the corners, which looked
+like haze. The tool now stops the game before doing anything else, so every run sees
+the same camera. It also exits properly on Linux now (it used to leave its preview
+server running and hang after printing), and `APEX_CHROMIUM` can point it at a
+particular browser.
+
+**Measured** (round-8 protocol, 1280×720/medium, SwiftShader, matching cameras): haze
+**on 4.68%**, **off 5.04%**, zero strength 5.05%. Haze on still sits below haze off, and
+the only real differences between the two pictures are in the exhaust plume and the
+horizon band. (The earlier 4.50% / 4.88% and the merge's 4.75% / 5.06% were taken with
+the mismatched cameras.) The 3.25% "off" figure from round 8 doesn't reproduce: off is
+about 5% here, the same as the Aug 30 entry's 4.88%. So getting the number below 2%
+isn't the haze's job. What's left is jagged edges in a quality tier that has no
+temporal anti-aliasing.
+
+**Re-checked on the merged build** (the numbers above were measured before the merge):
+- The stock sunset scenario now faces the sun, so at high quality it showed the white
+  veil out of the box: median brightness 234.6. With the fix it is **140.7**, a
+  readable golden-hour frame with beams through the cloud. With motion blur switched
+  off, the shafts still draw (141.2) and nothing washes out.
+- Speckle check with matching cameras: haze **on 3.86%**, **off 4.16%**, zero strength
+  4.16%. The tool now exits by itself on Linux.
+- All shaders still compile on the high and ultra tiers, and a full headless race gives
+  exactly the same results as before (top speed 320.4 km/h, best lap 1:51.42, no
+  errors).
+- While porting the shaft fix I found one more problem in it: once the shaft strength
+  was normalised, it fell below the old "is it on?" threshold of 0.001, so with motion
+  blur off the shafts would have stopped drawing altogether. The check is now "above
+  zero", the same test the shader itself uses.
 
 ---
 

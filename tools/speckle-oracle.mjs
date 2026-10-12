@@ -90,6 +90,7 @@ async function runVariant(browser, base, name, hook) {
     if (bootError) throw new Error(`boot failed: ${bootError}`);
 
     await page.evaluate((wanted) => {
+      globalThis.APEX.stop();
       const pipeline = globalThis.APEX?.ctx?.pipeline;
       const cfg = pipeline?._config;
       if (!cfg) return;
@@ -102,7 +103,6 @@ async function runVariant(browser, base, name, hook) {
     await page.evaluate(async (setup) => {
       const engine = globalThis.APEX;
       const ctx = engine.ctx;
-      engine.stop();
       if (ctx.race?.applyScenario) ctx.race.applyScenario(setup);
       const dt = 1 / 120;
       const steps = Math.round(2.0 / dt);
@@ -132,11 +132,19 @@ async function main() {
   const wanted = process.argv.slice(2).filter((a) => VARIANTS[a] !== undefined);
   const names = wanted.length ? wanted : ['on', 'off'];
 
+  const win = process.platform === 'win32';
   const server = spawn(
-    process.platform === 'win32' ? 'npx.cmd' : 'npx',
+    win ? 'npx.cmd' : 'npx',
     ['vite', 'preview', '--host', '127.0.0.1', '--port', String(PORT), '--strictPort'],
-    { cwd: ROOT, stdio: ['ignore', 'ignore', 'pipe'], shell: process.platform === 'win32' },
+    { cwd: ROOT, stdio: ['ignore', 'ignore', 'pipe'], shell: win, detached: !win },
   );
+  const stopServer = () => {
+    try {
+      if (win) server.kill();
+      else process.kill(-server.pid, 'SIGTERM');
+    } catch { }
+  };
+  for (const sig of ['SIGINT', 'SIGTERM']) process.once(sig, () => { stopServer(); process.exit(130); });
   server.stderr?.on('data', (d) => process.stderr.write(`[preview] ${d}`));
   const base = `http://127.0.0.1:${PORT}/`;
 
@@ -144,6 +152,7 @@ async function main() {
   try {
     if (!(await waitForServer(base))) throw new Error('preview server did not come up');
     browser = await chromium.launch({
+      executablePath: process.env.APEX_CHROMIUM || undefined,
       args: [
         '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader',
         '--ignore-gpu-blocklist', '--enable-gpu-rasterization', '--disable-dev-shm-usage', '--no-sandbox',
@@ -162,7 +171,7 @@ async function main() {
     }
   } finally {
     if (browser) await browser.close().catch(() => {});
-    server.kill();
+    stopServer();
   }
 }
 

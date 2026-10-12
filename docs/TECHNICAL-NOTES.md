@@ -459,6 +459,37 @@ and one NaN pixel poisons the whole bloom pyramid.
   captured frames, or the first frame refracts black. `ScreenCapture.resize`
   returns early when the size is unchanged, so the count resets only on a
   real size change (or `dispose`). `sceneTexture` is null until then.
+- **`sceneTexture` is also null while HeatHaze is disabled**
+  (`this.enabled && this.capture.ready`). `captureFrame` stops refreshing
+  the copy when haze is off (EffectsSystem gates it on `heat.enabled`,
+  §10.1) while `capture.ready` stays true, so a mid-race drop to a tier
+  without haze would otherwise leave the wet visor refracting a frozen
+  frame. While enabled, `EffectsSystem.lateUpdate` runs the capture
+  (`needScene` = enabled && (sources > 0 || rain > 0.02)) before it reads
+  `sceneTexture` in the same frame, so `Weather._updateVisor` (drawn only
+  from rain 0.02 up) gets that frame's capture once `ready` (2 frames after
+  a resize). Re-enabling hands out no stale frame for the same reason.
+- **Main camera only — `HAZE_LAYER` = 6** (exported): the mesh sits on
+  layer 6 alone (`mesh.layers.set`) and the constructor enables that layer
+  on `ctx.camera`. The `gl_FragCoord / uResolution` lookup assumes the
+  pipeline's scene target. The cockpit mirrors (§6.2) render the whole
+  scene from their own cameras into a 512 px target, where the same lookup
+  lands on an unrelated corner of the main view and differences it into the
+  glass. The player's own exhaust plume sits squarely in the left mirror:
+  diff up to 83 levels before the layer, 0 after.
+- Layer audit: the only other layer in use is `VELOCITY_LAYER` = 7 (§2.6).
+  `VelocityBuffer.render` saves `camera.layers.mask`, draws layer 7 only and
+  restores the mask, so layer 6 on the main camera survives. The haze mesh
+  is a direct child of `ctx.scene`, not under the camera or a car group, so
+  `registerDynamic` never tags it. The mirror cameras
+  (`Cockpit._buildMirrors`) are fresh PerspectiveCameras with the default
+  mask (layer 0 only): they skip the haze and still see everything else.
+  The SkySystem CubeCamera renders the separate `_skyScene`. The only
+  `renderer.render(scene, …)` calls are the main pipeline pass, the velocity
+  pass, the mirrors and Engine's no-pipeline fallback (main camera, where
+  the haze never becomes ready). Nothing else uses layer 6. A new camera
+  that should see the haze must enable `HAZE_LAYER`; anything else put on
+  layer 6 disappears from the mirrors too.
 - **Difference composite**: each patch adds `(warped − flat) × uGain` (0.85)
   with additive blending. This adds nothing where the image is flat, so a
   patch can never show its own edges. `scene + (warped − flat)` rebuilds the
@@ -475,7 +506,9 @@ and one NaN pixel poisons the whole bloom pyramid.
   fraction of the local level: hot air may brighten or darken a pixel by
   about a third of what is there. Beyond that it reads as chroma noise, not
   shimmer. Measured engine-cover speckle: 4.50% with haze on vs 4.88% off
-  (`tools/speckle-oracle.mjs`, §3.7).
+  (`tools/speckle-oracle.mjs`, §3.7); with matched cameras 4.68% on, 5.04%
+  off, 5.05% gain0; on the merged build (Oct 12) 3.86% on, 4.16% off,
+  4.16% gain0.
 - **Instance layout** (8 floats, `MAX_SOURCES` 40): `aCentre` = world
   position; `aParams` = (width, height, intensity, phase); `aScroll` = scroll
   rate. A NEGATIVE scroll marks a ground-lying layer (horizon mirage,
@@ -552,10 +585,10 @@ and one NaN pixel poisons the whole bloom pyramid.
   no scene texture (`uHasScene` 0) bend is 0, so beads only darken and show
   the rim. EffectsSystem captures only while HeatHaze is enabled, so a
   session that STARTS on the low tier (`heatHaze: false`) never refracts. A
-  live switch down to low (`HeatHaze.setQuality`) stops capture but leaves
-  `capture.ready` true, and `sceneTexture` does not check `enabled`: the
-  film keeps refracting the last captured, frozen frame until a real size
-  change resets the count (§2.9).
+  live switch down to low (`HeatHaze.setQuality`) stops capture and leaves
+  `capture.ready` true, but `sceneTexture` checks `enabled` and returns
+  null, so the film drops to the no-refraction path instead of refracting
+  the last captured, frozen frame (§2.9).
 - **Squared-Fresnel puddle bug** (`PUDDLE_SPECULAR_PATCH`): a water film
   composites `road*(1-R) + sky*R`. Alpha blending gives `colour*a +
   road*(1-a)`, so `a = R` is right — but only if `colour` is the *unweighted*
@@ -896,17 +929,31 @@ profile then died ENOENT opening a file called "0.50".
 
 ### 3.7 Engine-cover speckle oracle — `tools/speckle-oracle.mjs`
 This is the acceptance metric for the heat-haze rework (§2.9; the story is in
-docs/JOURNAL.md, Aug 30). It replicates the round-8 bisection protocol that
-traced the engine-cover "rainbow corruption" to HeatHaze.
+docs/JOURNAL.md, Aug 30 and Oct 12). It replicates the round-8 bisection
+protocol that traced the engine-cover "rainbow corruption" to HeatHaze.
 - Usage: `node tools/speckle-oracle.mjs [on|off|gain0 ...]`. The default run
   is `on` vs `off`; any subset can be named (e.g. `on gain0`). Unknown
-  arguments are ignored.
+  arguments are ignored. `APEX_CHROMIUM=/path/to/chrome node
+  tools/speckle-oracle.mjs` launches an explicit browser binary, for a
+  machine whose installed Chromium is not the build this Playwright expects;
+  unset, Playwright's own Chromium runs. (make-gif's override is named
+  `APEX_CHROME`, §3.8.)
 - Framing: chase-hero, `?shot=1&quality=medium&scenario=straight&camera=chase`
-  at 1280×720, DPR 1. Fast profile: pipeline `_config` godrays / motionBlur /
-  ao forced false, then `_applyConfig()`. The engine is stopped, the
-  `straight` scenario is applied (speed 80 m/s, full throttle, chase camera),
-  2 simulated seconds run at 1/120 steps with input disabled and throttle
+  at 1280×720, DPR 1. Order per variant: the engine is stopped FIRST, then
+  the fast profile (pipeline `_config` godrays / motionBlur / ao forced
+  false, then `_applyConfig()`), then the variant hook, then the `straight`
+  scenario is applied (speed 80 m/s, full throttle, chase camera), 2
+  simulated seconds run at 1/120 steps with input disabled and throttle
   pinned, then `present(0)` runs 4 times before the screenshot.
+- **Why the stop comes first**: the rAF loop steps the sim on wall-clock
+  time, and some of what it advances survives `applyScenario` (the camera
+  rig's damped FOV and shake). A variant that spent one more page
+  round-trip before the stop than another was measured through a different
+  camera. That was the hookless `on` variant: FOV 32.573° against 32.563°
+  for `off`/`gain0`, seen as a frame-wide difference with chromatic fringes
+  growing toward the corners. Numbers taken while the stop still came last
+  (in the scenario step) compared `on` through a slightly different camera
+  from `off`/`gain0`.
 - Measure: the engine-cover box at x 0.33–0.52, y 0.35–0.60 of the frame
   (kept one pixel inside the image). There are three speckle fractions, each
   counting pixels whose 3×3-neighbourhood deviation exceeds 39/255: max
@@ -915,16 +962,30 @@ traced the engine-cover "rainbow corruption" to HeatHaze.
   also prints `fx.heat.sourceCount`, the box and up to five console errors.
 - Variants: `on` (untouched), `off` (`fx.heat.enabled = false`) and `gain0`
   (`uGain = 0`: the effect still draws but contributes nothing). The variant
-  hook runs after the passes are skipped and before the scenario.
+  hook runs after the engine stop and the pass skip, before the scenario.
 - Round-8 reference (pre-fix build): baseline 15.16%, heat disabled 3.25%.
-  Acceptance: `on` within ~0.5 points of `off`. The JOURNAL records the
-  post-fix run at 4.50% on vs 4.88% off. Compare runs only on the same machine
-  and build.
+  Acceptance: `on` within ~0.5 points of `off`. Post-fix runs in the
+  JOURNAL: 4.50% on vs 4.88% off (Aug 30) and 4.75% vs 5.06% (merge, Oct 12),
+  both taken before the camera fix above; with matched cameras (1280×720 /
+  medium, SwiftShader) 4.68% on, 5.04% off, 5.05% gain0, and on the merged
+  build (Oct 12) 3.86% on, 4.16% off, 4.16% gain0. The on/off diff is
+  confined to the plume and the horizon band. The round-8 3.25%
+  `off` figure does not reproduce on later builds (off is ~5%), so a "below
+  2%" target is not the haze's to reach: what is left is edge aliasing in a
+  no-TAA tier (medium has `taa: false`). Compare runs only on the same
+  machine and build.
 - Assumes dist/ is built (it never builds). It starts its own `vite preview`
-  on private port 4189 (`--strictPort`; `npx.cmd` with a shell on win32),
-  waits up to 60 s for it, and kills it on exit. It launches Chromium with the
-  SwiftShader-ANGLE flags the capture harness uses and decodes with
-  `decodePng` from `tools/screenshot.mjs`. PNGs go to
+  on private port 4189 (`--strictPort`; `npx.cmd` with a shell on win32) and
+  waits up to 60 s for it. Off Windows the server is spawned `detached`, in
+  its own process group: npx runs vite as a grandchild, and signalling npx
+  alone left vite holding the port and kept the script's event loop open
+  after the last variant had printed (the script used to hang there on
+  Linux). `stopServer` (in `finally`) sends SIGTERM to the whole group
+  (`process.kill(-server.pid)`); on win32 it still kills only the direct
+  child. Outside the terminal's process group Ctrl-C no longer reaches vite
+  by itself, so SIGINT/SIGTERM handlers stop the group and exit 130. It
+  launches Chromium with the SwiftShader-ANGLE flags the capture harness
+  uses and decodes with `decodePng` from `tools/screenshot.mjs`. PNGs go to
   shots-oracle/chase-<variant>.png. There is no §3.2 checkout check: if
   another server already holds 4189, vite exits and the oracle measures
   whatever answers on that port.
@@ -1348,6 +1409,35 @@ display-referred sRGB write.
   veiling glare in). Driving shafts off it washed cockpit-pack to a white
   smear (sun at NDC y=1.27 still reporting 0.68). Shafts get their own term:
   full while the disc is on screen, gone shortly after.
+- `SHAFT_STRENGTH = 0.25` is the shaft radiance as a fraction of the sky it
+  is cut from: the composite intensity is `SHAFT_STRENGTH /
+  _shaftChainGain × _shaftFade`, i.e. 0.25 × the weighted average of the
+  mask along the ray to the sun (§5.2). The old constant was 0.85 on the
+  raw blur sum, adding about 256× the masked sky at 16 taps and 648× at 24.
+  No stock scenario had the disc in frame until the sunset shot was aimed
+  at the sun (`src/game/Scenarios.js` `goldenHourShot` /
+  `sunFacingDistance`). With it in frame (cockpit-sunset down the descent
+  to Bruxelles, high quality) the old sum laid a white veil: exposure was
+  pulled from 2.0 to 0.3 and the p50 still rose from 130 to 232. Measured
+  p50 at strength 0.25 / 0.5 / 1.0: 138 / 143 / 149, against 130 with
+  shafts off. At 0.25 the beams are clear (through cloud, round the halo);
+  at 0.5 the disc starts to glow; at 1.0 the road hazes. The median moves
+  more than the mean there (mean lift 1.0 at 0.25): that frame's histogram
+  is steep through the middle, about four counts per percentile.
+- `_shaftChainGain` = `shaftChainGain(cfg.samples.godraySamples)`, set in
+  `_applyConfig` (1 until then). Only the composite intensity is
+  normalised: `_godrayRT[0]` still holds the raw (clamped, §5.2) sum,
+  because the lens flare's visibility gate is calibrated against that scale
+  (§5.3). The final material's `tGodray` is still `_godrayRT[0]`, and
+  `uGodrayIntensity` does not affect it.
+- `uGodrayIntensity` is a normalised value of order 1e-4 to 1e-3 (0.25 ÷ a
+  chain gain of 147–763; ~3e-7 on ultra at fade 1e-3). Any on/off test on
+  it must be `<= 0`, never an absolute epsilon. `_renderShafts` runs every
+  frame before `_renderMotionBlur` and writes exactly 0 when shafts are
+  disabled or `_shaftFade <= 1e-3`, so the `<= 0` godrayOnly early-out in
+  `_renderMotionBlur` skips exactly the frames with no shafts. The fade
+  threshold lives in `_renderShafts`, not on the scaled intensity; the old
+  `<= 1e-3` there would now skip every shaft frame at 16 or 24 taps.
 - Wheel rotational blur: a hub barely moves relative to a cockpit camera but
   the rim turns ~240 rad/s at 310 km/h (a rev every 4 frames) — screen-space
   velocity is enormous and aliased, so tread/spokes look parked. The blur
@@ -1454,7 +1544,10 @@ display-referred sRGB write.
 - `apexShaft` (GODRAY_MASK_CHUNK) returns early when `uGodrayIntensity <= 0`
   instead of multiplying by zero: on a frame where shafts were not rendered
   the buffer holds whatever the driver left there, and Inf × 0 = NaN. This is
-  the shader-side half of the clear in §2.8.
+  the shader-side half of the clear in §2.8. It forms `uGodrayIntensity ×
+  mask` before multiplying by the texel, and both MotionBlurShader and
+  GodrayOnlyShader declare `precision highp float`, so the normalised
+  intensity (down to ~3e-7, §5.1) keeps full precision.
 - `uCentreClarity`/`uCentreRadius`: the apex is mid-frame and must stay
   readable; the periphery carries the speed. Live defaults (RenderPipeline
   never overrides them): 0.35 of the computed blur out to normalised radius
@@ -1511,15 +1604,37 @@ display-referred sRGB write.
   reduction runs straight after the occlusion blit, before the blur passes
   overwrite `_godrayRT[1]` (GodrayBlurShader writes alpha 1). With shafts
   off, the pipeline sets the external occlusion to 1.
-- Radial blur: `GodrayBlurShader` runs THREE times, and each pass's span
-  SHRINKS — `uDensity` 0.55 → 0.22 → 0.09, `uDecay` 0.962/0.975/0.985,
-  `uWeight` 0.38/0.55/0.62 — ping-ponging `_godrayRT[1]` → `[0]` → `[1]` →
-  `[0]`. The three passes compose a streak that reaches the frame edge
-  without one 48-tap loop. Taps are dithered per pixel so they do not band;
-  `GODRAY_SAMPLES` is 16 by default and on medium/high, 12 on low, 24 on
-  ultra. The composite fades by off-screen drift, surviving occlusion, and
-  receiver depth; `sunScreenFade` ramps so the effect never pops at a frame
-  boundary.
+- Radial blur: `GodrayBlurShader` runs once per entry of
+  `GODRAY_BLUR_PASSES` (three), and each pass's span SHRINKS — `density`
+  0.55 → 0.22 → 0.09, `decay` 0.962/0.975/0.985, `weight` 0.38/0.55/0.62.
+  `density` is the share of the pixel-to-sun distance a pass spans: the
+  first pass gives the shaft its reach and the next two fill in between its
+  taps, without 48 taps in one loop. The loop reads `_godrayRT[(i & 1) ^ 1]`
+  and writes `_godrayRT[i & 1]`, i.e. `[1]` → `[0]` → `[1]` → `[0]`, and
+  relies on GODRAY_BLUR_PASSES having an ODD length so the result lands in
+  `_godrayRT[0]`, where motionBlur, godrayOnly and final read it; an even
+  count would leave it in `[1]`. Taps are dithered per pixel so they do not
+  band; `GODRAY_SAMPLES` is 16 by default and on medium/high, 12 on low, 24
+  on ultra. The composite fades by off-screen drift, surviving occlusion,
+  and receiver depth; `sunScreenFade` ramps so the effect never pops at a
+  frame boundary.
+- **Chain gain** — `shaftChainGain(samples, passes = GODRAY_BLUR_PASSES)`:
+  each pass SUMS its taps, so a uniform mask comes out multiplied by the
+  product over the passes of `weight × Σ decay^i` = `weight × (1 −
+  decay^samples) / (1 − decay)`: 146.9 at 12 taps (low), 300.6 at 16
+  (medium/high), 762.6 at 24 (ultra). Dividing the blurred buffer by it (in
+  the composite intensity, §5.1) turns it into a weighted average of the
+  mask along the screen-space ray to the sun: bounded by the brightest
+  masked sky on the ray and independent of tap count. Without it the same
+  frame drew its shafts ~2.5× brighter on ultra than on high. Clamping a
+  tap's UV to the frame edge changes where the tap reads, not its weight,
+  so the quotient is a true average for every pixel.
+- **Blur output clamp**: `min(acc × uWeight, vec3(65000.0))`, just under the
+  largest finite half float (65504). At 24 taps the sunset disc texel
+  summed to about 52000 in green and +Inf in red; that Inf reached the
+  bloom prefilter's Karis weights as Inf × 0 and knocked out bloom and lens
+  ghosts around the disc on ultra. Wherever the sum fits, the clamp does
+  nothing.
 
 ### 5.3 Lens/final pass (`src/render/shaders/LensShader.js`)
 - One folded fullscreen shader (tonemap, grade, CA, distortion, flare, dirt,
@@ -1549,7 +1664,10 @@ display-referred sRGB write.
   bit-identical. When the shaft pass ran (`uUseGodrayVis`), vis is further ×
   `clamp(3.2 × luma(tGodray at the sun))`. That is a branch, not a `mix()`:
   on a frame with no shaft pass the buffer is undriven and mix() would still
-  evaluate its NaN into the result (§2.8).
+  evaluate its NaN into the result (§2.8). `tGodray` is `_godrayRT[0]`, the
+  RAW (clamped) blur sum, and the 3.2 is calibrated against that scale: the
+  shaft normalisation lives in `uGodrayIntensity` (§5.1); normalising the
+  buffer itself would silently recalibrate this gate.
 - Flare terms (r in aspect-corrected UV; × `uFlareStrength` 0.34 unless
   noted): veiling glare in two lobes — tight core `exp(-r²·340)` × 3.0 (the
   bloom round the source) and wide faint veil `exp(-r·4)` × 0.25 (what a sun
@@ -2297,7 +2415,9 @@ outboard of the tub wall where the chase camera would catch it clipping).
   mirror refreshed per frame; shadow maps NOT rebuilt for the mirror (built
   this frame already — rebuilding doubles shadow cost for 512 px nobody
   studies); the driver rig is hidden during the mirror pass (the mirror
-  looks back past the shoulder — half a 114 mm pane would be helmet).
+  looks back past the shoulder — half a 114 mm pane would be helmet). The
+  mirror cameras keep the default layer mask (layer 0 only), which is what
+  keeps the screen-space heat haze (`HAZE_LAYER` 6, §2.9) out of the glass.
 - **Visor**: quad fitted to the LIVE frustum — CameraRig moves fov with
   speed/braking, so a one-shot at boot (82°) sat outside the ~52° the rig
   projects and never showed. Refit behind an equality check (two float
@@ -3721,7 +3841,11 @@ models:
   latch motion history on frames the sim did not advance (§2.7).
 - Do NOT source the heat-haze/visor capture from the drawing buffer or any
   tonemapped frame. Blit `RenderPipeline.sceneColorTexture` (linear HDR)
-  (§2.9).
+  (§2.9). Do NOT enable `HAZE_LAYER` on any camera but the main one, and do
+  NOT hand out `sceneTexture` while HeatHaze is disabled (§2.9).
+- Do NOT gate on `uGodrayIntensity` with an absolute epsilon (`<= 0` only),
+  do NOT normalise the shaft buffer itself (the flare gate reads its raw
+  scale), and keep `GODRAY_BLUR_PASSES` an odd length (§5.1–§5.3).
 - Do NOT sample three's `vNormalMapUv` for puddle placement (§2.10). Do NOT
   alpha-blend water with the BRDF's own Fresnel-weighted specular as the
   colour (squared Fresnel, §2.10). Do NOT add a 0..1 refraction term into
@@ -3794,7 +3918,9 @@ models:
 - One scene-target blit (`HeatHaze.captureFrame` of
   `RenderPipeline.sceneColorTexture`, §2.9) serves both refraction
   consumers. It is taken only when one will sample it: HeatHaze enabled AND
-  (haze sources present OR rain intensity > 0.02). Damage-section positions
+  (haze sources present OR rain intensity > 0.02). The capture runs before
+  `weather.lateUpdate` reads `heat.sceneTexture` in the same frame, and that
+  getter is null while HeatHaze is disabled (§2.9). Damage-section positions
   in car-local metres (-Z forward). Public: one-off spark shower; forced
   road wetness; global emitter scale (photo mode, performance fallback).
 
@@ -4305,6 +4431,8 @@ speeds m/s unless stated. "ctx" is the shared engine context.
   turbidity, ozone, out)`; `skyRadiance(dir…, sun…, altitude, turbidity,
   ozone, multiScatter, steps, out)` — CPU mirrors of the shader;
   `kelvinToLinearRGB(K, out)`; `sunScreenFade(x, y, behind)`;
+  `GODRAY_BLUR_PASSES` (three `{density, weight, decay}`) and
+  `shaftChainGain(samples, passes = GODRAY_BLUR_PASSES)` (§5.2);
   `exposureFor(luminance)`; `createGradeUniforms()`;
   `createLensDirtTexture(size, rng)`.
 - **Texture builders** (`src/render/textures/*`): every builder returns
@@ -4338,10 +4466,10 @@ speeds m/s unless stated. "ctx" is the shared engine context.
   (`burst(...)`), `TyreSmoke` (`update(dt, ctx, fx)` with EffectsSystem's
   per-car state), `Weather` (setWetness), `HeatHaze` (`captureFrame(ctx)`
   blits `ctx.pipeline.sceneColorTexture`; `sceneTexture` getter, null until
-  ready, feeds the visor film; `sourceCount`) + `ScreenCapture`
-  (`capture(renderer, sourceTexture)` quad-blits into a HalfFloat target;
-  `ready` after two frames; `texture`); EXHAUST_LOCAL car-local exhaust
-  exit.
+  ready and while disabled, feeds the visor film; `sourceCount`) +
+  `ScreenCapture` (`capture(renderer, sourceTexture)` quad-blits into a
+  HalfFloat target; `ready` after two frames; `texture`); EXHAUST_LOCAL
+  car-local exhaust exit; `HAZE_LAYER` (6, main camera only, §2.9).
 
 ### 11.8 tools/
 - **screenshot.mjs** exports `SCENARIOS`, `frameStats`, `decodePng`; CLI
@@ -4358,7 +4486,8 @@ speeds m/s unless stated. "ctx" is the shared engine context.
   §3.6.
 - **speckle-oracle.mjs**: `node tools/speckle-oracle.mjs [on|off|gain0 ...]`
   (default: on vs off), §3.7. Needs a built dist/ and starts its own
-  preview server on 4189.
+  preview server on 4189, which it stops (whole process group off Windows)
+  before exiting. `APEX_CHROMIUM` sets the browser binary.
 - **make-gif.mjs**: `node tools/make-gif.mjs [--shot straight|chase|apex|
   pack|grid] [--frames N] [--fps N] [--width/--height] [--quality]
   [--warmup s] [--out file] [--gif-width px] [--keep]`, §3.8. Needs ffmpeg

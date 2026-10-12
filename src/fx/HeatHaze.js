@@ -6,6 +6,7 @@ const DUCT_LOCAL = [
   [-0.72, 0.3, -1.944],
   [0.72, 0.3, -1.944]
 ];
+export const HAZE_LAYER = 6;
 const MAX_SOURCES = 40;
 const FLOATS_PER_SOURCE = 8;
 const _v = new THREE.Vector3();
@@ -304,6 +305,8 @@ export class HeatHaze {
     mesh.renderOrder = 40;
     mesh.matrixAutoUpdate = false;
     mesh.visible = false;
+    mesh.layers.set(HAZE_LAYER);
+    ctx.camera.layers.enable(HAZE_LAYER);
     this.mesh = mesh;
     ctx.scene.add(mesh);
     const gl = ctx.renderer.getContext();
@@ -411,7 +414,7 @@ export class HeatHaze {
     return this._count;
   }
   get sceneTexture() {
-    return this.capture.ready ? this.capture.texture : null;
+    return this.enabled && this.capture.ready ? this.capture.texture : null;
   }
   dispose() {
     if (this.mesh) {

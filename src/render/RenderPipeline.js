@@ -22,6 +22,8 @@ import { FinalCompositeShader, createLensDirtTexture } from "./shaders/LensShade
 import {
   GodrayOcclusionShader,
   GodrayBlurShader,
+  GODRAY_BLUR_PASSES,
+  shaftChainGain,
   sunScreenFade
 } from "./shaders/GodrayShader.js";
 const TILE_SIZE = 20;
@@ -481,6 +483,7 @@ const _whiteData = new Uint8Array([255, 255, 255, 255]);
 const SHUTTER_SECONDS = 1 / 100;
 const SHAFT_EDGE_FULL = 0.95;
 const SHAFT_EDGE_GONE = 1.15;
+const SHAFT_STRENGTH = 0.25;
 const WHEEL_MAX_ARC = 0.85;
 const WHEEL_MIN_RATE = 12;
 export class RenderPipeline {
@@ -508,6 +511,7 @@ export class RenderPipeline {
     this._tileMaxRT = null;
     this._neighbourMaxRT = null;
     this._godrayRT = [null, null];
+    this._shaftChainGain = 1;
     this._bloomRT = [];
     this._sunOccRT = null;
     this._sunOccPixels = new Uint8Array(4);
@@ -663,6 +667,7 @@ export class RenderPipeline {
       m.godrayBlur.defines.GODRAY_SAMPLES = cfg.samples.godraySamples;
       m.godrayBlur.needsUpdate = true;
     }
+    this._shaftChainGain = shaftChainGain(cfg.samples.godraySamples);
     m.resolve.uniforms.uAoStrength.value = cfg.ao ? 0.85 : 0;
     m.resolve.uniforms.uSharpen.value = cfg.taa ? 0.22 : 0;
     m.motionBlur.uniforms.uGodrayIntensity.value = 0;
@@ -1171,22 +1176,16 @@ export class RenderPipeline {
     const blur = m.godrayBlur.uniforms;
     blur.uSunUv.value.set(sunX, sunY);
     blur.uFrameSeed.value = this._frame % 64 * 3.71;
-    blur.tDiffuse.value = this._godrayRT[1].texture;
-    blur.uDensity.value = 0.55;
-    blur.uWeight.value = 0.38;
-    blur.uDecay.value = 0.962;
-    this._blit(m.godrayBlur, this._godrayRT[0]);
-    blur.tDiffuse.value = this._godrayRT[0].texture;
-    blur.uDensity.value = 0.22;
-    blur.uWeight.value = 0.55;
-    blur.uDecay.value = 0.975;
-    this._blit(m.godrayBlur, this._godrayRT[1]);
-    blur.tDiffuse.value = this._godrayRT[1].texture;
-    blur.uDensity.value = 0.09;
-    blur.uWeight.value = 0.62;
-    blur.uDecay.value = 0.985;
-    this._blit(m.godrayBlur, this._godrayRT[0]);
-    const intensity = 0.85 * this._shaftFade;
+    for (let i = 0; i < GODRAY_BLUR_PASSES.length; i++) {
+      const pass = GODRAY_BLUR_PASSES[i];
+      const read = this._godrayRT[(i & 1) ^ 1];
+      blur.tDiffuse.value = read.texture;
+      blur.uDensity.value = pass.density;
+      blur.uWeight.value = pass.weight;
+      blur.uDecay.value = pass.decay;
+      this._blit(m.godrayBlur, this._godrayRT[i & 1]);
+    }
+    const intensity = SHAFT_STRENGTH / this._shaftChainGain * this._shaftFade;
     m.motionBlur.uniforms.uGodrayIntensity.value = intensity;
     m.godrayOnly.uniforms.uGodrayIntensity.value = intensity;
     const sunColor = ctx.sky?.sunLight?.color;
@@ -1254,7 +1253,7 @@ export class RenderPipeline {
     mb.uSpeedScale.value = speedScale;
     const blurActive = cfg.motionBlur && this._motionBlurScale > 1e-3 && (speedScale > 0 || mb.uWheelActive.value > 0.5);
     if (!blurActive) {
-      if (m.godrayOnly.uniforms.uGodrayIntensity.value <= 1e-3) return src;
+      if (m.godrayOnly.uniforms.uGodrayIntensity.value <= 0) return src;
       const dst2 = this._pick(src);
       m.godrayOnly.uniforms.tDiffuse.value = src.texture;
       this._blit(m.godrayOnly, dst2);

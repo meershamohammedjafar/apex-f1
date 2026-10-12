@@ -1,5 +1,18 @@
 import * as THREE from "three";
 import { FULLSCREEN_VERTEX } from "./MotionBlurShader.js";
+export const GODRAY_BLUR_PASSES = [
+  { density: 0.55, weight: 0.38, decay: 0.962 },
+  { density: 0.22, weight: 0.55, decay: 0.975 },
+  { density: 0.09, weight: 0.62, decay: 0.985 }
+];
+export function shaftChainGain(samples, passes = GODRAY_BLUR_PASSES) {
+  let gain = 1;
+  for (let i = 0; i < passes.length; i++) {
+    const { weight, decay } = passes[i];
+    gain *= weight * (1 - Math.pow(decay, samples)) / (1 - decay);
+  }
+  return gain;
+}
 export const GodrayOcclusionShader = {
   name: "ApexGodrayOcclusion",
   uniforms: {
@@ -85,7 +98,7 @@ export const GodrayBlurShader = {
         illumination *= uDecay;
       }
 
-      gl_FragColor = vec4(acc * uWeight, 1.0);
+      gl_FragColor = vec4(min(acc * uWeight, vec3(65000.0)), 1.0);
     }
   `
   )
