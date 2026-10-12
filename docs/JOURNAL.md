@@ -307,7 +307,8 @@ their commit details, and GitHub keeps pull-request history permanently — it c
 rewritten or deleted from this side. So the public version, `apex-f1`, gets only clean
 history — the squashed main line plus the Aug 30 – Sep 4 work (round 9 and the new
 docs) merged in as one commit, all under my GitHub no-reply address — and this
-repository stays private as the full working record.
+repository stayed private. (Later the same day the two ended up with the same history;
+see "Tidying the history" below.)
 
 ---
 
@@ -446,6 +447,48 @@ temporal anti-aliasing.
   was normalised, it fell below the old "is it on?" threshold of 0.001, so with motion
   blur off the shafts would have stopped drawing altogether. The check is now "above
   zero", the same test the shader itself uses.
+
+---
+
+## Oct 12 — Tidying the history
+
+With the game public, the git history is part of what people see, so I went through
+it the way I'd go through the code.
+
+**A placeholder commit message.** One commit on `main` was titled "Implement feature X
+to enhance user experience and fix bug Y in module Z". All it actually did was update
+`package-lock.json` with the dependency tree for Electron and electron-builder: the
+desktop app and the Windows build need those packages, and `package.json` already
+listed them. It's now called "Lock the Electron and electron-builder dependencies",
+with a line on why. In git a commit's ID covers its message, so rewording one commit
+gives it and every later commit a new ID. That meant force-pushing. The files and
+dates are untouched.
+
+**One history in both places.** Public `apex-f1` and private `formula-one` now share
+the same `main`: five commits, all under my GitHub no-reply address. If you have an
+older copy of either, run `git fetch` and `git reset --hard origin/main` rather than a
+normal pull, because a pull would try to merge the old commits back in.
+
+**Old branches removed.** The original Aug 30 branch was still there, with 24 commits
+carrying my work email, along with a few working branches. Two of those held fixes that
+weren't merged yet. I brought those in first (the previous entry), then deleted all of
+them, so `main` is the only branch left.
+
+**The profile repo too.** Two commits on my profile README had stray co-author lines in
+their messages, so GitHub listed a second author against them. I removed the lines and
+force-pushed; the README and GIFs are byte-for-byte the same. I also tidied the
+descriptions of the two closed pull requests here.
+
+**What can't be changed.** A closed pull request keeps its original branch name and
+commits for good: you can't delete one yourself, only GitHub Support can. Both are in
+this private repository, so only I can see them.
+
+**Lessons.**
+- Settle the commit identity (the no-reply address) and the message conventions before
+  the first push. History is cheap to write and expensive to rewrite.
+- Before replacing `main` with a squashed copy, diff it against the newest branch.
+  Rebuilding `main` from an Aug 30 copy quietly dropped five days of work, and it only
+  surfaced because I was preparing a public release.
 
 ---
 
