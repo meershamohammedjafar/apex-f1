@@ -216,6 +216,54 @@ which mattered for the first time now that verification runs on a Windows machin
 
 ---
 
+## Oct 12 — A moving picture for the README, and a public home for the game
+
+The README was a wall of text, and a racing game sells itself in three seconds of
+motion. So the top of the README (and my GitHub profile) now shows a short looping
+clip: the cockpit view flat out down the pit straight towards La Source — 310 km/h,
+eighth gear, 13,400 rpm, DRS open — with a personal-best banner landing mid-clip.
+
+**How the clip is made.** `tools/make-gif.mjs` opens the game in a headless browser,
+skips the menu, places the car with one of the test scenarios, and then *drives the
+clock itself*: every GIF frame advances the simulation by exactly seven 1/120 s ticks,
+renders once, and takes a screenshot. Because the clock is stepped rather than timed,
+the clip plays back at true speed even though the machine rendering it has no graphics
+card and needed about 6 seconds per frame. The frames are then turned into a GIF in
+two passes — first build the best 256-colour palette for the whole clip, then map
+every frame onto it — which is what keeps a dark cockpit and a bright sky from
+banding.
+
+The numbers: 54 frames at 18 fps (three seconds), 760 px wide, 5.9 MB. GitHub shows
+README images up to about 10 MB, so width and length were trimmed until it fit with
+room to spare.
+
+**Snags along the way.**
+- The browser bundled with the test library didn't match the one installed on the
+  render machine, so the tool now looks for an installed Chromium first (and accepts
+  an `APEX_CHROME` path to point it somewhere else).
+- Asking for the GIF at a full path quietly wrote it *inside the project* instead,
+  because the path was glued onto the project folder. Full paths are now used as given.
+- Frames are written to `.gifframes/`, which git ignores, and deleted afterwards unless
+  `--keep` is passed.
+
+Re-make it any time with:
+
+```bash
+node tools/make-gif.mjs --shot straight --frames 54 --fps 18 --width 1280 --height 720 --quality medium --gif-width 760 --out media/apex-cockpit.gif
+```
+
+Other shots are available: `chase`, `apex`, `pack` and `grid`.
+
+**Why the public copy is a separate repository.** A GIF on a public profile can only
+link to a repository people can open, and this one is private. Making it public as-is
+wasn't safe: older branches and two closed pull requests carry a work email address in
+their commit details, and GitHub keeps pull-request history permanently — it can't be
+rewritten or deleted from this side. So the public version, `apex-f1`, gets only the
+clean history (two commits plus this work, all under my GitHub no-reply address), and
+this repository stays private as the full working record.
+
+---
+
 ## The scoreboard so far
 
 | Round | Review score | Headline |

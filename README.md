@@ -5,6 +5,8 @@ weekend against ten AI-driven teams at Spa-Francorchamps, and a AAA-style render
 pipeline (temporal anti-aliasing, motion blur, bloom, heat haze, dynamic weather,
 night racing) — developed in review loops against real shipped titles.
 
+<img src="media/apex-cockpit.gif" width="760" alt="APEX in motion: the cockpit view flat out down the pit straight towards La Source at 310 km/h in eighth gear with DRS open, a personal-best lap banner appearing on the HUD">
+
 ## Play it
 
 Requires [Node.js](https://nodejs.org) 20+.
@@ -86,6 +88,8 @@ failing on console errors or blank frames. Also:
 - `tools/speckle-oracle.mjs` — regression check for the engine-cover speckle bug
   (measures the heat-haze effect's pixel damage with the effect on, off, and neutered).
 - `tools/probe-shift.mjs` — measures yaw disturbance through gear shifts.
+- `tools/make-gif.mjs` — renders a deterministic clip and encodes it as a GIF
+  (`--shot straight|chase|apex|pack|grid`); the README clip came from this.
 
 Screenshot scenarios and quality tiers are pinned so that captures are reproducible;
 compare metrics on/off on the same machine and build, never across machines.
