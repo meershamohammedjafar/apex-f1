@@ -37,6 +37,19 @@ const PAD_BUTTONS = {
   9: "pause",
   10: "lookBack"
 };
+export function firstConnectedGamepad() {
+  let pads = null;
+  try {
+    pads = globalThis.navigator?.getGamepads?.();
+  } catch {
+    return null;
+  }
+  if (!pads) return null;
+  for (const p of pads) {
+    if (p && p.connected) return p;
+  }
+  return null;
+}
 export class Input {
   static systemName = "input";
   constructor() {
@@ -152,16 +165,25 @@ export class Input {
     this._pressed.clear();
     this._released.clear();
   }
-  _pollGamepad() {
-    const pads = globalThis.navigator?.getGamepads?.();
-    if (!pads) return;
-    let pad = null;
-    for (const p of pads) {
-      if (p && p.connected) {
-        pad = p;
-        break;
-      }
+  resyncGamepad() {
+    const pad = firstConnectedGamepad();
+    const held = new Set();
+    const released = new Set();
+    for (const [index, action] of Object.entries(PAD_BUTTONS)) {
+      const i = Number(index);
+      const pressed = !!pad?.buttons[i]?.pressed;
+      if (pressed) held.add(action);
+      else if (this._padPrev.get(i)) released.add(action);
+      this._padPrev.set(i, pressed);
     }
+    for (const action of released) {
+      if (!held.has(action)) this._down.delete(action);
+    }
+    this._pressed.clear();
+    this._released.clear();
+  }
+  _pollGamepad() {
+    const pad = firstConnectedGamepad();
     if (!pad) return;
     const dead = 0.08;
     const ax = (i) => {

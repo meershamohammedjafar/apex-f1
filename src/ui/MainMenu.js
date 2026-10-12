@@ -1,6 +1,7 @@
 import { TEAMS, DRIVERS } from "../car/Teams.js";
 import { KEY_ACTIONS } from "../core/Input.js";
 import { clamp } from "../core/MathUtils.js";
+import { MenuGamepad, gamepadConnected, menuKeyEvent } from "./MenuGamepad.js";
 import "./mainmenu.css";
 const SESSION_TYPES = [
   { id: "practice", label: "Practice", blurb: "Free running. No classification, no pressure." },
@@ -16,6 +17,20 @@ const DIFFICULTIES = [
 ];
 const QUALITY_TIERS = ["low", "medium", "high", "ultra"];
 const WEATHER_OPTIONS = ["clear", "scattered", "cloudy", "overcast", "rain", "storm"];
+const HINTS = {
+  main: {
+    keys: "Arrows navigate and change  ·  Enter selects  ·  Esc backs out",
+    pad: "D-pad navigates and changes  ·  A selects  ·  B backs out"
+  },
+  settings: {
+    keys: "Changes apply immediately  ·  Esc returns",
+    pad: "Changes apply immediately  ·  B returns"
+  },
+  controls: {
+    keys: "Esc returns",
+    pad: "B returns"
+  }
+};
 const ACTION_LABELS = {
   throttle: "Throttle",
   brake: "Brake",
@@ -251,6 +266,7 @@ export class MainMenu {
     this._buildDom();
     this.list = new RowList(this.body, () => this._render());
     this._onKeyDown = (event) => this._handleKey(event);
+    this.gamepad = new MenuGamepad((action) => this._handlePad(action), () => this._paintHint());
   }
   onStart(fn) {
     this._startHandlers.push(fn);
@@ -287,6 +303,7 @@ export class MainMenu {
     document.getElementById("apex-hud")?.classList.add("is-hidden");
     this._render();
     globalThis.addEventListener("keydown", this._onKeyDown, { capture: true });
+    this.gamepad.start();
   }
   hide() {
     if (!this.visible) return;
@@ -294,9 +311,11 @@ export class MainMenu {
     this.el.classList.remove("is-open");
     document.getElementById("apex-hud")?.classList.remove("is-hidden");
     globalThis.removeEventListener("keydown", this._onKeyDown, { capture: true });
+    this.gamepad.stop();
   }
   dispose() {
     this.hide();
+    this.gamepad.stop();
     this.el.remove();
     this._startHandlers.length = 0;
   }
@@ -312,7 +331,12 @@ export class MainMenu {
     if (this.screen === "main") this._renderMain();
     else if (this.screen === "settings") this._renderSettings();
     else this._renderControls();
+    this._paintHint();
     this.list.paintFocus();
+  }
+  _paintHint() {
+    const hint = HINTS[this.screen] ?? HINTS.controls;
+    this.hint.textContent = gamepadConnected() ? hint.pad : hint.keys;
   }
   _renderMain() {
     const session = SESSION_TYPES[this.config.sessionType];
@@ -371,7 +395,6 @@ export class MainMenu {
         this.list.focusIndex = 0;
       }
     });
-    this.hint.textContent = "Arrows navigate and change  ·  Enter selects  ·  Esc backs out";
   }
   _renderSettings() {
     addSettingsRows(this.list, this.ctx);
@@ -382,7 +405,6 @@ export class MainMenu {
         this.list.focusIndex = 0;
       }
     });
-    this.hint.textContent = "Changes apply immediately  ·  Esc returns";
   }
   _renderControls() {
     const map = bindingsByAction();
@@ -399,7 +421,7 @@ export class MainMenu {
     }
     this.body.appendChild(grid);
     const pad = el("div", "mm-pad-note");
-    pad.textContent = "Gamepad and wheel are detected automatically. Triggers steer throttle and brake, shoulder buttons shift, and the left stick steers.";
+    pad.textContent = "Gamepad and wheel are detected automatically. Triggers steer throttle and brake, shoulder buttons shift, and the left stick steers. In menus the d-pad or left stick moves, A selects and B goes back, while Start pauses the race and resumes it from the pause menu.";
     this.body.appendChild(pad);
     this.list.addRow("Back", "", {
       kind: "action",
@@ -408,7 +430,6 @@ export class MainMenu {
         this.list.focusIndex = 0;
       }
     });
-    this.hint.textContent = "Esc returns";
   }
   _handleKey(event) {
     if (!this.visible) return;
@@ -425,6 +446,11 @@ export class MainMenu {
       event.preventDefault();
       event.stopPropagation();
     }
+  }
+  _handlePad(action) {
+    if (!this.visible) return;
+    const event = menuKeyEvent(action === "start" ? "select" : action);
+    if (event) this._handleKey(event);
   }
   _start() {
     const driver = this._selectedDriver();

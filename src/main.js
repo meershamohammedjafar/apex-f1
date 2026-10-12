@@ -70,6 +70,7 @@ async function boot() {
     menu.onStart(() => {
       engine.ctx.paused = false;
       if (engine.ctx.input) engine.ctx.input.enabled = true;
+      engine.ctx.input?.resyncGamepad?.();
       engine.ctx.input?.endFrame?.();
     });
     if (autostart) {
@@ -78,6 +79,7 @@ async function boot() {
         laps: Number(params.get("laps")) || void 0,
         skill: Number(params.get("skill")) || 0.78
       });
+      engine.ctx.input?.resyncGamepad?.();
     } else {
       engine.ctx.paused = true;
       menu.show();

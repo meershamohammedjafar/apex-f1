@@ -59,10 +59,20 @@ Step-by-step instructions, packaging details and what to try if it runs slowly a
 | Pause menu | Esc | View or Menu / Share or Options |
 | FPS counter | `` ` `` (backtick) | — |
 
-Esc opens the pause menu: resume, restart the session, settings (the same live settings
-as the main menu) and quit to the main menu. Arrow keys and Enter (or the mouse) drive
-it; Esc resumes, or steps back out of the settings screen. The backtick key toggles a
-counter showing frame rate, frame time and draw calls.
+Esc, or either pause button on a gamepad, opens the pause menu: resume, restart the
+session, settings (the same live settings as the main menu) and quit to the main menu.
+Arrow keys and Enter (or the mouse) drive it; Esc resumes, or steps back out of the
+settings screen. The backtick key toggles a counter showing frame rate, frame time and
+draw calls.
+
+Both menus also work from a gamepad alone: the d-pad or left stick moves (left and right
+change a value, and holding a direction repeats it), A selects, B goes back the way Esc
+does (on the pause screen that means resume), and Start (View or Menu / Share or
+Options) resumes from the pause menu; on the main menu Start does the same as A. The
+hints at the foot of each menu switch to pad buttons while a pad is connected. A button
+still held as a menu closes is not taken as a new press, so the A that starts a race is
+not a DRS press and the B that resumes is not a car reset. Browsers hide a pad from the
+page until one of its buttons is pressed, so in a menu that first press only wakes it up.
 
 The main menu covers session type (Practice / Qualifying / Race), race distance, team
 and driver selection, four AI difficulty levels, and a settings screen (quality tier,
@@ -114,6 +124,12 @@ failing on console errors or blank frames. Also:
   report. It does not start a server: run `npm run build`, then keep
   `npm run preview` running on port 4173 (the VS Code task "APEX: verify gameplay"
   needs that too).
+- `tools/verify-menu-gamepad.mjs` — plugs a simulated gamepad into the built game in
+  headless Chromium and proves, in twelve steps, that a pad alone can start a race,
+  pause, change a setting, back out and resume; that the stick's threshold and
+  auto-repeat behave; that a held A, B or Start never leaks through as DRS, a car reset
+  or a second pause; and that the keyboard and its hints still work. It exits 0 only
+  when every step passes. It serves `dist/` itself, so run `npm run build` first.
 - `tools/analyse.mjs` — brightness/contrast statistics for a screenshot.
 - `tools/speckle-oracle.mjs` — regression check for the engine-cover speckle bug
   (measures the heat-haze effect's pixel damage with the effect on, off, and neutered).

@@ -728,7 +728,8 @@ Other harness rules:
   `--use-angle=swiftshader`, `--enable-unsafe-swiftshader`,
   `--ignore-gpu-blocklist`, `--enable-gpu-rasterization`,
   `--disable-dev-shm-usage`, `--no-sandbox`. `tools/speckle-oracle.mjs`
-  passes the same seven (§3.7); `tools/make-gif.mjs` passes a subset (§3.8).
+  and `tools/verify-menu-gamepad.mjs` pass the same seven (§3.7, §3.9);
+  `tools/make-gif.mjs` passes a subset (§3.8).
 - `presentEvery = 0` skips warmup presents entirely (--fast, TAA off — the
   converged history buys nothing and each present re-renders shadows/mirrors).
 - Input is disabled during capture to stop it overwriting scripted controls
@@ -917,7 +918,11 @@ seconds of fixed-step sim with scripted controls before the grab.
   `brake` and `steer` to whoever authors them — the harness's scripted
   ControlState must survive the tick. The in-game pause menu that disables
   Input also sets ctx.paused so no system consumes a stale axis
-  (`src/ui/Menu.js`, `src/core/Input.js`).
+  (`src/ui/Menu.js`, `src/core/Input.js`). That clearing needs `update()` to
+  run, and under a menu it does not: `ctx.paused` makes `Engine._tick` skip
+  `step()`, so neither branch of `Input.update` runs while any menu is open
+  and the pad state from before the menu survives it. Re-enabling after a
+  menu therefore goes through `Input.resyncGamepad()` (§7.9).
 
 ### 3.6 analyse.mjs — `tools/analyse.mjs`
 `shadow` scans a horizontal band and prints mean luminance per x-bin (a cast
@@ -1023,6 +1028,96 @@ Renders a deterministic clip from the built game and encodes it as a GIF.
   end.
 - Not Windows-safe: it derives `ROOT` from `new URL(import.meta.url).pathname`
   and spawns plain `npx` without a shell, the two traps §3.1 describes.
+
+### 3.9 Menu gamepad check — `tools/verify-menu-gamepad.mjs`
+Proves the menu gamepad fix (§7.9) end to end in the built game, with a
+simulated pad.
+- Usage: `npm run build`, then `node tools/verify-menu-gamepad.mjs` (with
+  `PLAYWRIGHT_BROWSERS_PATH` set if Playwright's browsers live somewhere
+  non-default). It only checks that `dist/index.html` exists. It never
+  builds, so a stale dist/ tests old code. It starts its own
+  `npx vite preview --host 127.0.0.1 --port <port> --strictPort`; the port is
+  `MENU_PAD_PORT`, or an OS-assigned free one when that is unset (a
+  `MENU_PAD_PORT` already in use is an error). It waits up to 60 s for the
+  server to print its URL. Off Windows the server is spawned detached and the
+  whole process group is stopped, as in §3.7; on win32 it runs as `npx.cmd`
+  through a shell and is stopped with `taskkill /T /F` (the whole tree). The
+  stop runs in `finally`, on exit, and on SIGINT (exit 130) or SIGTERM
+  (exit 143). `ROOT` comes from `fileURLToPath`. `APEX_CHROMIUM` sets the browser binary; the launch flags
+  are §3.1's seven. One 960×540 page at DPR 1 loads `?quality=low` (no shot
+  parameter, so the main menu comes up paused) and waits up to 10 minutes for
+  `__APEX_READY__` or `__APEX_ERROR__`.
+- Fake pad: `installFakePad` runs through `addInitScript`, so it is in place
+  before the game's first poll. It replaces `Navigator.prototype.getGamepads`
+  with one that returns a single connected "Test pad" (index 0,
+  `mapping: "standard"`, 17 buttons, 4 axes) as a fresh snapshot on every
+  call, or no pad at all after `setConnected(false)`. No `gamepadconnected`
+  events fire, so the hint switches have to come from polling.
+  `globalThis.__padTest` exposes `setButton`, `setAxis`, `setConnected`,
+  `releaseAll`, `frames(n)`, `menu(selector)` (open state, focus index, rows
+  with label and value, focused label, the hint with whitespace normalised
+  and as `hintRaw`, and the controls page's `padNote`), `rowValue`, `tap`
+  (press, wait until a MutationObserver sees the menu react or 30 frames
+  pass, release), `stickRun` (scripted axis segments; returns focus moves,
+  segment marks and frame ticks relative to the first mark),
+  `spyInput`/`spyState`/`unspy` (wraps `ctx.input.update` and counts calls,
+  enabled calls, resets, DRS and updates with the pause menu open) and
+  `engine("stop"|"start")`. Selectors are the observable contract: main menu
+  `.mm:not(.mm-pause)`, pause menu `.mm.mm-pause`, open = `is-open`, focus
+  `.mm-row.is-focused`, label `.mm-row-label`. Hints are compared exactly on
+  the raw text, which pins the two-space middle-dot separator.
+- Steps, in order, on one page and one session (each leaves the game in the
+  state the next expects; after each, anything still held is released, the
+  pad is reconnected and 3 frames run):
+  1. main menu d-pad navigation: open and paused at boot, focus 0, d-pad
+     down to row 1 and up to row 0.
+  2. left stick threshold, hysteresis, repeat timing and diagonal: 0.45
+     never moves; 0.6 → 0.4 → 0.6 moves once; 0.6 → 0.3 → 0.6 moves twice;
+     0.9 held for 1.8 s moves on the press (within 2 frames), at least 3
+     times in all, never after release, and the n-th move comes no sooner
+     than 400 + 120·(n − 2) ms after the first (20 ms slack); at median
+     frames of 50 ms or less it also needs at least 8 moves and an average
+     repeat of at most 180 ms. A diagonal (x 0.6, y 0.8) on the Session row
+     moves focus down once and changes no value.
+  3. A starts the session and held A is not DRS.
+  4. held Start opens and keeps the pause menu.
+  5. pause settings via d-pad: to Settings, A, to a safe row (Field of view,
+     Film grain, Camera shake or Head movement), right changes it, left
+     restores it.
+  6. B backs out of settings, then B (held) on the pause screen resumes with
+     no car reset, held or released.
+  7. the keyboard drives the pause menu, and a held Start resumes a
+     keyboard-opened menu once without re-pausing.
+  8. held A on Quit to menu does not leak into the main menu (still open,
+     focus 0, row values unchanged).
+  9. the keyboard still drives the main menu (Settings and Controls, out
+     again with Esc, values unchanged).
+  10. pad-aware hints and pad reconnect: the exact pad hints collected along
+      the way, the controls note, the keyboard hint on disconnect, the pad
+      hint again on reconnect with A held, and that A doing nothing.
+  11. held Start on the start row starts the session and does not open the
+      pause menu.
+  12. keyboard hints with no pad, switching live both ways in the pause
+      menu.
+- Timing: SwiftShader frames on the build machine stall 5–12 s with the
+  engine running and about 170 ms with it stopped, so every wait is generous
+  (45 s per wait, plus 6 s per frame for `frames(n)`). Step 2 is the only
+  step that stops the engine (`APEX.stop()`, restarted in `finally`) so
+  frames arrive at display rate. Each short stick hold is tried up to five
+  times; if no attempt stays under the 400 ms repeat delay, the hysteresis
+  and diagonal checks become notes ("not checked, frames too slow") rather
+  than failures, and the repeat-rate upper bound is only checked at median
+  frames of 50 ms or less. The 0.45 zero-move check, first-move-on-press,
+  the at-least-3-moves check, no-move-after-release and the per-move lower
+  bounds are always enforced.
+- Output and exit: one `PASS`/`FAIL` line per step with its time and detail
+  (a throw fails that step only), `FAIL n. name: not run` for steps a setup
+  failure skipped, up to five page errors (listed, but they do not fail the
+  run), then `menu-gamepad: N/12 passed`. Exit 0 only when all 12 pass,
+  otherwise 1; a missing dist/ prints `0/12 passed` and exits 1. Run on
+  Oct 12 against the fix: `menu-gamepad: 12/12 passed`, booted in 26.5 s,
+  about 9 minutes in all, no page errors. Step 2's hold measured 13 moves in
+  1800 ms at 17 ms frames: first repeat at 417 ms, then an average of 121 ms.
 
 ---
 
@@ -3618,6 +3713,115 @@ construction (hot path never walks the config tree).
   run fully offline (headless capture harness, CI) with no external
   requests. The only script is the `/src/main.js` module.
 
+### 7.9 Menu gamepad — `src/ui/MenuGamepad.js` (+ `Menu.js`, `MainMenu.js`, `src/core/Input.js`)
+- **Why the menus poll the pad themselves.** Every menu runs with
+  `ctx.paused` set: the main menu at boot (`src/main.js`), and the pause menu
+  from `open()`, which also sets `ctx.input.enabled = false`.
+  `Engine._tick` calls `step()` only while not paused, so `Input.update`,
+  and the `_pollGamepad` inside it, never runs while a menu is open. The
+  pad could OPEN the pause menu (buttons 8/9 are `pause` in `PAD_BUTTONS`,
+  read while the race runs) but could not move, select, back out of or close
+  it, and the main menu could not be used from a pad at all, so a pad-only
+  player could not start a race. The keyboard was never affected: both
+  menus take DOM `keydown` in the capture phase, which does not depend on
+  the tick. `MenuGamepad` is a requestAnimationFrame poll that runs only
+  while its menu is open: `start()` from `MainMenu.show()` and
+  `Menu.open()`, `stop()` from `MainMenu.hide()`, `Menu._hideOverlay()` and
+  both `dispose()`s. Both calls are idempotent. The poller is `this.gamepad`
+  in both menus (`MainMenu._renderControls` has a local DOM node called
+  `pad`).
+- **Mapping.** The first connected pad from `navigator.getGamepads()`
+  (`firstConnectedGamepad()`, shared with `Input`), read at the standard
+  indices: d-pad 12 up, 13 down, 14 left, 15 right; left stick `axes[0]` x
+  and `axes[1]` y (down positive); button 0 select, 1 back, 8 or 9 start.
+  8 and 9 are one logical button, so pressing both in one frame fires start
+  once. Buttons are read through `pressed` only, as `Input` reads them. Each
+  direction is its d-pad button OR the stick. Per frame, directions are
+  handled first (up, down, left, right), then select, back, start.
+- **Stick.** One stick direction at a time: the strongest of the four signed
+  axis values. It engages at ≥ 0.5 and holds while its own value stays
+  above 0.35, even if the other axis grows stronger (hysteresis: 0.6 → 0.4 →
+  0.6 is one press, 0.6 → 0.3 → 0.6 is two). A diagonal fires only its
+  stronger axis (x 0.6, y 0.8 is down, never also right), so a sloppy push
+  down the main menu cannot change a value on the way; on an exact tie the
+  order up, down, left, right decides. Non-finite axis values count as 0.
+- **Repeat.** Directions auto-repeat on `performance.now()`: the press edge
+  fires at once and arms `next = now + 400 ms`; when `now >= next` a repeat
+  fires and `next += 120 ms`, so a late frame is followed by a shorter gap
+  and the cadence does not drift, unless the loop has fallen a whole
+  interval behind, in which case `next = now + 120`. At most one repeat per
+  frame per direction, so a direction held through a stall of 400 ms or more
+  repeats once when the stall ends. Buttons fire on the press edge only.
+  Measured with the engine stopped (17 ms frames): first repeat at 417 ms,
+  then 121 ms on average (§3.9).
+- **The snapshot.** `start()` reads the pad before its first frame: logical
+  buttons already down count as previous state (no edge), and directions
+  already held are latched, with no fire and no repeat until they are fully
+  released (d-pad and stick). This swallows the Start that opened the pause
+  menu and the A on "Quit to menu" that brought up the main menu. The pad's
+  identity (`index|id`) is checked every frame; when it changes (a pad
+  appears, disappears or another becomes first) the poller takes a fresh
+  snapshot, calls `onConnectionChange(connected)` and fires nothing else
+  that frame. Browsers hide a pad from the page until one of its buttons is
+  pressed, so in a menu that first press wakes the pad and does nothing
+  else.
+- **Re-entrancy.** `start()` and `stop()` both increment `_epoch`. After
+  every `onAction` or `onConnectionChange` call `_poll` returns if the epoch
+  has changed, so nothing stale runs after a callback closed the menu (Start
+  or B resuming, A on Resume or Quit to menu, A starting the session). The
+  loop requests its next frame before polling, so a `stop()` inside a
+  callback cancels that request cleanly.
+- **Wiring.** `menuKeyEvent(action)` turns up/down/left/right/select/back
+  into `{code, preventDefault(){}, stopPropagation(){}}` with ArrowUp,
+  ArrowDown, ArrowLeft, ArrowRight, Enter and Escape (null for anything
+  else), and each menu feeds that to its existing `_handleKey`, so focus
+  wrap, value changes and Escape behave exactly as on the keyboard. Pause
+  menu (`Menu._handlePad`): back is Esc (settings returns to the pause
+  screen with focus 0; the pause screen resumes) and start calls `close()`
+  from any screen. Main menu (`MainMenu._handlePad`): start is select, and
+  back is Esc (nothing on the main screen; settings and controls return to
+  main with focus 0). Keyboard and mouse handling is unchanged.
+- **Hints.** Both menus keep a `HINTS` table keyed by screen with `keys` and
+  `pad` variants in the existing separator (two spaces, middle dot, two
+  spaces), painted by `_paintHint()` on every render and from
+  `onConnectionChange`, so the text follows a pad live even when no
+  `gamepadconnected` event fires. `gamepadConnected()` (the first connected
+  pad has `mapping === "standard"`) chooses the variant; it is used only for
+  hint text, and the poller reads any pad at the standard indices, as `Input`
+  does in the race. Pad text: pause "D-pad navigates  ·  A selects  ·  B
+  back  ·  Start resumes", settings in either menu "Changes apply
+  immediately  ·  B returns", main "D-pad navigates and changes  ·  A
+  selects  ·  B backs out", controls "B returns". The controls page's
+  gamepad note says the d-pad or left stick moves, A selects, B goes back and
+  Start pauses the race and resumes it from the pause menu.
+- **`Input.resyncGamepad()`.** In the race, pad A (0) is DRS, B (1) resets
+  the car and 8/9 pause (`PAD_BUTTONS`). `Input` does not poll during a
+  menu, so `_padPrev` still describes the pad from before it. Without a
+  resync, the A or B that closed a menu (A on Resume, B on the pause screen,
+  A on the main menu's start row) is still held on the first tick back and
+  reads as a new press: DRS, or a car reset the instant the game resumes. A
+  held Start re-pauses whenever `_padPrev` holds no earlier Start press
+  (resuming a pause menu the keyboard opened, or starting from the main
+  menu at boot). `resyncGamepad()` writes the current `pressed` state of
+  every `PAD_BUTTONS` index into `_padPrev` (false with no pad) and clears
+  `_pressed` and `_released`. It also removes an action from `_down` when
+  that action was pad-held before the menu and no pad index for it is
+  pressed now. Two reasons: `update()` does not run at all while paused (not
+  even its disabled branch, which clears `_down`), so `_down` can still hold
+  `pause` from the Start press that opened the menu, and keyboard Esc only
+  registers a press when `pause` is not already in `_down`; and with
+  `_padPrev` overwritten, the next poll can no longer see that release
+  itself. Callers: `Menu.close()` after `enabled = true` and before
+  `endFrame()` (covers Resume, Restart session, B, Start, Esc and a scrim
+  click); the MainMenu `onStart` handler in `src/main.js` after
+  `enabled = true` (a fresh `Input` has an empty `_padPrev`, so the A or
+  Start that began the session would otherwise land as DRS or a pause); and
+  the `autostart=1` branch of `src/main.js` after `applyToSession` (the
+  reload `MainMenu._start()` does when the player picks another driver).
+  `Menu.close()` and the `onStart` handler are the only places in src/ that
+  set `enabled = true` after construction. `Menu._quitToMenu()` leaves input disabled on purpose;
+  the main menu's start handler re-enables it.
+
 ---
 
 ## 8. Audio
@@ -3882,6 +4086,10 @@ models:
   when finite (§7.7).
 - Do NOT treat CameraRig FOVs as vertical (§7.6). Do NOT reintroduce
   distance-only tower handover (§7.6).
+- Do NOT read menu input through `Input` (it does not run while
+  `ctx.paused`), and do NOT re-enable Input after a menu without
+  `resyncGamepad()`: a held A, B or Start lands as DRS, a car reset or a
+  re-pause (§7.9).
 - Do NOT rewire audio graphs at runtime; only parameters move (§8). Do NOT
   write audio params per tick (per frame only, in lateUpdate) (§8.1).
 - Do NOT add or remove lights at runtime (§2.11 / Sparks).
@@ -4169,6 +4377,14 @@ speeds m/s unless stated. "ctx" is the shared engine context.
   controls (§3.5). Gamepad: the first connected pad, standard mapping —
   stick axis 0 steers (8% deadzone), triggers are read as analogue BUTTON
   values (7 throttle, 6 brake); pedals that report as axes give nothing.
+  Pad buttons (`PAD_BUTTONS`, module-private): 0 DRS, 1 reset, 2 ERS, 3
+  camera cycle, 4 shift down, 5 shift up, 8 and 9 pause, 10 look back.
+  Devices are read only inside `update()`, so not while `ctx.paused`.
+  `resyncGamepad()` re-reads every pad button into the edge state after a
+  menu so a held button is not a new press (§7.9). Exports `KEY_ACTIONS`
+  and `firstConnectedGamepad()` (the first `navigator.getGamepads()` entry
+  with `connected`, or null, including when `getGamepads` throws), which
+  `_pollGamepad`, `resyncGamepad` and `MenuGamepad` share.
   Only mapped keys call preventDefault, so the browser keeps
   F-keys/devtools/reload.
 - **Settings** (`src/core/Settings.js`): QUALITY_TIERS; systems read
@@ -4450,6 +4666,10 @@ speeds m/s unless stated. "ctx" is the shared engine context.
 - **UI**: `HUD(ctx)`, `TimingTower(ctx, mount)`, `Minimap(ctx)`,
   `LoadingScreen` (pre-engine, own rAF), `Menu`, `MainMenu`/`RowList`/
   `addSettingsRows`/`el(tag, className, text)`. Behaviour in §7.7.
+  `MenuGamepad(onAction, onConnectionChange?)` with idempotent
+  `start()`/`stop()`; `onAction` gets "up", "down", "left", "right",
+  "select", "back" or "start". Also `gamepadConnected()` (hint text only)
+  and `menuKeyEvent(action)`. Behaviour in §7.9.
 - **fx**: `EffectsSystem` (registers as `ctx.fx`; `init(ctx)`; public:
   `sparkBurst(x, y, z, nx, ny, nz, energy, groundY)`, `setWetness(w)` /
   `wetness` getter, `setIntensity(value)` — clamped 0..2 and copied to the
@@ -4492,6 +4712,10 @@ speeds m/s unless stated. "ctx" is the shared engine context.
   pack|grid] [--frames N] [--fps N] [--width/--height] [--quality]
   [--warmup s] [--out file] [--gif-width px] [--keep]`, §3.8. Needs ffmpeg
   on PATH.
+- **verify-menu-gamepad.mjs**: `node tools/verify-menu-gamepad.mjs`, §3.9.
+  Twelve steps with a simulated pad; exits 0 only when all pass. Needs a
+  built dist/ and starts its own preview server (`MENU_PAD_PORT`, default
+  a free port). `APEX_CHROMIUM` sets the browser binary.
 - **probe-shift.mjs / tmp-menucheck.mjs**: one-off Playwright probes
   against the preview server.
 
@@ -4526,10 +4750,12 @@ The code carries no comments of any kind; this document holds the reasoning.
   numbers differ from older builds.
 - What remains is not commentary: the `#!/usr/bin/env node` hashbang on
   line 1 of `analyse.mjs`, `make-gif.mjs`, `screenshot.mjs`,
-  `speckle-oracle.mjs` and `verify-gameplay.mjs` (an interpreter directive;
-  ECMAScript calls it a HashbangComment and acorn reports it through
-  `onComment`, so an acorn-based comment check reports these lines), GLSL
-  preprocessor directives, and the prose files — docs/, CONTRACT.md,
-  README.md — which were never stripped. All the tools are committed as
-  mode 100644, so the hashbang does nothing unless the executable bit is
-  set: run them with `node tools/<name>.mjs`.
+  `speckle-oracle.mjs`, `verify-gameplay.mjs` and `verify-menu-gamepad.mjs`
+  (an interpreter directive; ECMAScript calls it a HashbangComment and acorn
+  reports it through `onComment`, so an acorn-based comment check reports
+  these lines), GLSL preprocessor directives, and the prose files — docs/,
+  CONTRACT.md, README.md — which were never stripped.
+  `verify-menu-gamepad.mjs` was written after both passes and never carried
+  comments. All the tools are committed as mode 100644, so the hashbang does
+  nothing unless the executable bit is set: run them with
+  `node tools/<name>.mjs`.

@@ -492,6 +492,83 @@ this private repository, so only I can see them.
 
 ---
 
+## Oct 12 — The gamepad could open the pause menu but never leave it
+
+Playing with nothing but a controller turned up a bad one. Pressing Start mid-race
+opened the pause menu as it should, and from then on nothing on the pad did anything:
+the d-pad didn't move the highlight, A didn't select, B didn't back out and Start didn't
+close it. The only way back into the race was the keyboard or the mouse. The main menu
+was worse. It's the first thing on screen, and it couldn't be driven from the pad at
+all, so someone holding only a controller couldn't even start a race.
+
+**Why.** Every menu pauses the game, and a paused game stops running its update step,
+which is also where the controller gets read. The keyboard kept working because the
+menus listen for key presses directly, as they happen. A pad's buttons send no such
+events; the game has to ask the browser for the pad's state every frame, and while
+paused nothing was asking. Start could open the pause menu only because that press arrived while the race
+was still running.
+
+**The trap behind it.** In a race, A is DRS and B resets the car to the track. Teaching
+the menus to read the pad isn't enough on its own: the A or B that closes a menu is
+still held on the first frame back, and the race would take it as a fresh press. B on
+the pause screen means "resume", so resuming with B would have reset the car on the
+spot, starting a race with A would have counted as a DRS press, and a Start still held
+after resuming could have paused it again.
+
+**The fix.** Each menu now reads the pad itself while it's open, with its own small
+loop that starts when the menu opens and stops when it closes. The conventions:
+- The d-pad or left stick moves, and left and right change a value. Holding a direction
+  repeats it: the first repeat after 0.4 s, then about eight a second.
+- A selects. B goes back exactly like Esc, so on the pause screen it resumes. Start
+  resumes from any pause-menu screen, and on the main menu it does the same as A.
+- The stick needs a firm push (half way) to count and has to drop back below about a
+  third before it counts again, so a stick resting near the line doesn't flicker. A
+  diagonal counts only as its stronger direction, so pushing down at a slight angle
+  never changes a setting by accident.
+- Anything already held when a menu opens is ignored until it's let go. That's what
+  stops the Start that opened the pause menu from closing it again, and the A on "Quit
+  to menu" from picking something in the main menu.
+- The hint line at the bottom of each menu switches to pad buttons while a pad is
+  connected ("D-pad navigates · A selects · B back · Start resumes" on the pause screen)
+  and back to the keyboard text when it goes. The controls page now says how the menus
+  work on a pad.
+
+Pad presses are turned into the same arrow, Enter and Esc presses the keyboard sends,
+so the menus behave the same either way, and the keyboard and mouse work exactly as
+before. For the trap, whenever a menu hands control back to the race the game takes a
+fresh reading of every pad button, so anything still held counts as already pressed,
+not as new.
+
+One browser quirk worth knowing: a page can't see a pad until one of its buttons has
+been pressed. In a menu, that first press just wakes the pad up.
+
+**How it's tested.** `tools/verify-menu-gamepad.mjs` opens the built game in a headless
+browser and plugs in a pretend controller, a stand-in for the browser's list of pads
+whose buttons and stick the script presses. Then it plays twelve steps from boot: move
+around the main menu with the d-pad, time the stick's threshold and repeat, start a race
+with A and keep holding it (no DRS), pause with Start and keep holding it (the menu
+stays open), change a setting with the d-pad, back out with B and keep holding it (no
+car reset), quit to the main menu with A held (nothing in it changes), unplug and replug
+the pad to watch the hints switch, and drive both menus from the keyboard to show
+nothing changed there. This machine has no graphics card and a frame can take several
+seconds with the game running, so the waits are long and the stick timing is measured
+with the game stopped.
+
+The final run passed every step, in about nine minutes:
+
+```
+menu-gamepad: 12/12 passed
+```
+
+With the stick held down for 1.8 s the highlight moved 13 times: once on the push, the
+first repeat at 417 ms, then on average every 121 ms.
+
+**Lesson.** "Paused" here means nothing ticks, input included. Anything that has to
+work while paused needs its own way to listen, and anything held through a pause has to
+be accounted for when play resumes.
+
+---
+
 ## The scoreboard so far
 
 | Round | Review score | Headline |

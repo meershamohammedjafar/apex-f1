@@ -1,6 +1,17 @@
 import { el, RowList, addSettingsRows } from "./MainMenu.js";
+import { MenuGamepad, gamepadConnected, menuKeyEvent } from "./MenuGamepad.js";
 const SCREEN_PAUSE = "pause";
 const SCREEN_SETTINGS = "settings";
+const HINTS = {
+  [SCREEN_PAUSE]: {
+    keys: "Arrows navigate  ·  Enter selects  ·  Esc resumes",
+    pad: "D-pad navigates  ·  A selects  ·  B back  ·  Start resumes"
+  },
+  [SCREEN_SETTINGS]: {
+    keys: "Changes apply immediately  ·  Esc returns",
+    pad: "Changes apply immediately  ·  B returns"
+  }
+};
 export class Menu {
   constructor(ctx, mount) {
     this.ctx = ctx;
@@ -31,6 +42,7 @@ export class Menu {
     mount.appendChild(this.root);
     this.list = new RowList(this.body, () => this._render());
     this._onKeyDown = (event) => this._handleKey(event);
+    this.gamepad = new MenuGamepad((action) => this._handlePad(action), () => this._paintHint());
     this._onPause = () => this.toggle();
     ctx.events?.on("game:pause", this._onPause);
   }
@@ -45,7 +57,6 @@ export class Menu {
           this.list.focusIndex = 0;
         }
       });
-      this.hint.textContent = "Changes apply immediately  ·  Esc returns";
     } else {
       this.list.addRow("Resume", "", {
         kind: "action",
@@ -68,9 +79,13 @@ export class Menu {
           onActivate: () => this._quitToMenu()
         });
       }
-      this.hint.textContent = "Arrows navigate  ·  Enter selects  ·  Esc resumes";
     }
+    this._paintHint();
     this.list.paintFocus();
+  }
+  _paintHint() {
+    const hint = HINTS[this.screen];
+    this.hint.textContent = gamepadConnected() ? hint.pad : hint.keys;
   }
   _refreshVenue() {
     const track = this.ctx.track;
@@ -101,6 +116,15 @@ export class Menu {
       event.stopPropagation();
     }
   }
+  _handlePad(action) {
+    if (!this.isOpen) return;
+    if (action === "start") {
+      this.close();
+      return;
+    }
+    const event = menuKeyEvent(action);
+    if (event) this._handleKey(event);
+  }
   _restart() {
     this.ctx.race?.restart?.();
     this.close();
@@ -123,18 +147,21 @@ export class Menu {
     if (this.ctx.input) this.ctx.input.enabled = false;
     document.exitPointerLock?.();
     globalThis.addEventListener("keydown", this._onKeyDown, { capture: true });
+    this.gamepad.start();
   }
   close() {
     if (!this.isOpen) return;
     this._hideOverlay();
     this.ctx.paused = false;
     if (this.ctx.input) this.ctx.input.enabled = true;
+    this.ctx.input?.resyncGamepad?.();
     this.ctx.input?.endFrame?.();
   }
   _hideOverlay() {
     this.isOpen = false;
     this.root.classList.remove("is-open");
     globalThis.removeEventListener("keydown", this._onKeyDown, { capture: true });
+    this.gamepad.stop();
   }
   toggle() {
     if (this.isOpen) this.close();
@@ -143,6 +170,7 @@ export class Menu {
   dispose() {
     this.ctx.events?.off("game:pause", this._onPause);
     globalThis.removeEventListener("keydown", this._onKeyDown, { capture: true });
+    this.gamepad.stop();
     this.root.remove();
   }
 }
